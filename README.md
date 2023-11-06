@@ -22,18 +22,27 @@ BLEU scores for VGG19 (Orange) and ResNet152 (Red) Trained With Teacher Forcing.
 | BLEU-3     | ![BLEU-3](/assets/bleu3.png) | Validation Top-1 | ![Val TOP-1](/assets/val_top1.png) |
 | BLEU-4     | ![BLEU-4](/assets/bleu4.png) | Validation Top-5 | ![Val TOP-5](/assets/val_top5.png) |
 
+## Setup before training
+
+Follow the instructions for the dataset you choose to work with.
+
+First, download Karpathy's data splits [here](https://www.kaggle.com/datasets/shtvkumar/karpathy-splits).
+
+### Flickr8k
+
+Download the flickr8k images from [here](https://www.kaggle.com/datasets/adityajn105/flickr8k). Put the images in `data/flickr8k/imgs/`.
+Place the Flickr8k data split JSON file in `data/flickr8k/`. It should be named `dataset.json`.
+
+Run `python generate_json_data.py --split-path='data/flickr8k/dataset.json' --data-path='data/flickr8k'` to generate the JSON files needed for training.
+
+### COCO
+
+Download the COCO dataset training and validation images. Put them in `data/coco/imgs/train2014` and `data/coco/imgs/val2014` respectively.
+Put the COCO dataset split JSON file from Karpathy in `data/coco/`. It should be named `dataset.json`.
+
+Run `python generate_json_data.py --split-path='data/coco/dataset.json' --data-path='data/coco'` to generate the JSON files needed for training.
+
 ## To Train
-
-This was written in python3 so may not work for python2. Download the COCO dataset training and validation
-images. Put them in `data/coco/imgs/train2014` and `data/coco/imgs/val2014` respectively. Put the COCO
-dataset split JSON file from [Deep Visual-Semantic Alignments](https://cs.stanford.edu/people/karpathy/deepimagesent/)
-in `data/coco/`. It should be named `dataset.json`.
-
-Run the preprocessing to create the needed JSON files:
-
-```bash
-python generate_json_data.py
-```
 
 Start the training by running:
 
@@ -53,21 +62,6 @@ tensorboard --logdir runs
 ```bash
 python generate_caption.py --img-path <PATH_TO_IMG> --model <PATH_TO_MODEL_PARAMETERS>
 ```
-
-## Todo
-
-- [x] Create image encoder class
-- [x] Create decoder class
-- [x] Create dataset loader
-- [x] Write main function for training and validation
-- [x] Implement attention model
-- [x] Implement decoder feed forward function
-- [x] Write training function
-- [x] Write validation function
-- [x] Add BLEU evaluation
-- [ ] Update code to use GPU only when available, otherwise use CPU
-- [x] Add performance statistics
-- [x] Allow encoder to use resnet-152 and densenet-161
 
 ## Captioned Examples
 

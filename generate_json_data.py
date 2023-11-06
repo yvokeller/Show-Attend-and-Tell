@@ -20,16 +20,22 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
             else:
                 break
 
+            try: # support flickr8k datasets.json that doesn't have subfolders
+                img['filepath']
+            except KeyError:
+                filepath_defined = False
+            img_path = f"{data_path}/imgs{'/' + img['filepath'] if filepath_defined else ''}/{img['filename']}"
+
             if img['split'] == 'train':
-                train_img_paths.append(data_path + '/imgs/' + img['filepath'] + '/' + img['filename'])
+                train_img_paths.append(img_path)
                 train_caption_tokens.append(sentence['tokens'])
             elif img['split'] == 'val':
-                validation_img_paths.append(data_path + '/imgs/' + img['filepath'] + '/' + img['filename'])
+                validation_img_paths.append(img_path)
                 validation_caption_tokens.append(sentence['tokens'])
             max_length = max(max_length, len(sentence['tokens']))
             word_count.update(sentence['tokens'])
 
-    words = [word for word in word_count.keys() if word_count[word] >= args.min_word_count]
+    words = [word for word in word_count.keys() if word_count[word] >= min_word_count]
     word_dict = {word: idx + 4 for idx, word in enumerate(words)}
     word_dict['<start>'] = 0
     word_dict['<eos>'] = 1
