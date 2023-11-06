@@ -1,5 +1,7 @@
 # Show, Attend and Tell: Neural Image Caption Generation with Visual Attention
 
+Built upon AaronCCWong's PyTorch [implementation](https://github.com/AaronCCWong/Show-Attend-and-Tell).
+
 ## A PyTorch implementation
 
 For a trained model to load into the decoder, use
