@@ -47,7 +47,7 @@ Run `python generate_json_data.py --split-path='data/coco/dataset.json' --data-p
 Start the training by running:
 
 ```bash
-python train.py
+python train.py --data=data/flickr8k
 ```
 
 The models will be saved in `model/` and the training statistics are uploaded to your W&B account.

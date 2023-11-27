@@ -11,70 +11,80 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.use_tf = tf
 
+        # Initializing parameters
         self.vocabulary_size = vocabulary_size
         self.encoder_dim = encoder_dim
 
-        self.init_h = nn.Linear(encoder_dim, 512)
-        self.init_c = nn.Linear(encoder_dim, 512)
+        # Initial LSTM cell state generators
+        self.init_h = nn.Linear(encoder_dim, 512)  # For hidden state
+        self.init_c = nn.Linear(encoder_dim, 512)  # For cell state
         self.tanh = nn.Tanh()
 
-        self.f_beta = nn.Linear(512, encoder_dim)
+        # Attention mechanism related layers
+        self.f_beta = nn.Linear(512, encoder_dim)  # Gating scalar in attention mechanism
         self.sigmoid = nn.Sigmoid()
 
-        self.deep_output = nn.Linear(512, vocabulary_size)
+        # Output layer and embedding
+        self.deep_output = nn.Linear(512, vocabulary_size)  # Maps LSTM outputs to vocabulary
         self.dropout = nn.Dropout()
 
-        self.attention = Attention(encoder_dim)
-        self.embedding = nn.Embedding(vocabulary_size, 512)
-        self.lstm = nn.LSTMCell(512 + encoder_dim, 512)
+        # Attention and LSTM components
+        self.attention = Attention(encoder_dim)  # Attention network
+        self.embedding = nn.Embedding(vocabulary_size, 512)  # Embedding layer for input words
+        self.lstm = nn.LSTMCell(512 + encoder_dim, 512)  # LSTM cell
 
     def forward(self, img_features, captions):
-        """
-        We can use teacher forcing during training. For reference, refer to
-        https://www.deeplearningbook.org/contents/rnn.html
-
-        """
+        # Forward pass of the decoder
         batch_size = img_features.size(0)
 
+        # Initialize LSTM state
         h, c = self.get_init_lstm_state(img_features)
-        max_timespan = max([len(caption) for caption in captions]) - 1
 
+        # Teacher forcing setup
+        max_timespan = max([len(caption) for caption in captions]) - 1
         prev_words = torch.zeros(batch_size, 1).long().to(mps_device)
         if self.use_tf:
             embedding = self.embedding(captions) if self.training else self.embedding(prev_words)
         else:
             embedding = self.embedding(prev_words)
 
+        # Preparing to store predictions and attention weights
         preds = torch.zeros(batch_size, max_timespan, self.vocabulary_size).to(mps_device)
         alphas = torch.zeros(batch_size, max_timespan, img_features.size(1)).to(mps_device)
-        for t in range(max_timespan):
-            context, alpha = self.attention(img_features, h)
-            gate = self.sigmoid(self.f_beta(h))
-            gated_context = gate * context
 
+        # Generating captions
+        for t in range(max_timespan):
+            context, alpha = self.attention(img_features, h)  # Compute context vector via attention
+            gate = self.sigmoid(self.f_beta(h))  # Gating scalar for context
+            gated_context = gate * context  # Apply gate to context
+
+            # Prepare LSTM input
             if self.use_tf and self.training:
                 lstm_input = torch.cat((embedding[:, t], gated_context), dim=1)
             else:
                 embedding = embedding.squeeze(1) if embedding.dim() == 3 else embedding
                 lstm_input = torch.cat((embedding, gated_context), dim=1)
 
+            # LSTM forward pass
             h, c = self.lstm(lstm_input, (h, c))
-            output = self.deep_output(self.dropout(h))
+            output = self.deep_output(self.dropout(h))  # Generate word prediction
 
             preds[:, t] = output
-            alphas[:, t] = alpha
+            alphas[:, t] = alpha  # Store attention weights
 
+            # Prepare next input word
             if not self.training or not self.use_tf:
                 embedding = self.embedding(output.max(1)[1].reshape(batch_size, 1))
         return preds, alphas
 
     def get_init_lstm_state(self, img_features):
+        # Initializing LSTM state based on image features
         avg_features = img_features.mean(dim=1)
 
-        c = self.init_c(avg_features)
+        c = self.init_c(avg_features)  # Cell state
         c = self.tanh(c)
 
-        h = self.init_h(avg_features)
+        h = self.init_h(avg_features)  # Hidden state
         h = self.tanh(h)
 
         return h, c

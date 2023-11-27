@@ -166,7 +166,8 @@ batch.s
 results.out
 
 data/*
-model/model*
+model/*
+
 
 runs/
 wandb/
