@@ -30,7 +30,7 @@ First, download Karpathy's data splits [here](https://www.kaggle.com/datasets/sh
 
 ### Flickr8k
 
-Download the flickr8k images from [here](https://www.kaggle.com/datasets/adityajn105/flickr8k). Put the images in `data/flickr8k/imgs/`.
+Download the Flickr8k images from [here](https://www.kaggle.com/datasets/adityajn105/flickr8k). Put the images in `data/flickr8k/imgs/`.
 Place the Flickr8k data split JSON file in `data/flickr8k/`. It should be named `dataset.json`.
 
 Run `python generate_json_data.py --split-path='data/flickr8k/dataset.json' --data-path='data/flickr8k'` to generate the JSON files needed for training.
@@ -50,18 +50,26 @@ Start the training by running:
 python train.py
 ```
 
-The models will be saved in `model/` and the training statistics will be saved in `runs/`. To see the
-training statistics, use:
+The models will be saved in `model/` and the training statistics are uploaded to your W&B account.
 
-```bash
-tensorboard --logdir runs
-```
+My training statistics are available here: [W&B](https://wandb.ai/yvokeller/show-attend-and-tell)
 
 ## To Generate Captions
 
 ```bash
 python generate_caption.py --img-path <PATH_TO_IMG> --model <PATH_TO_MODEL_PARAMETERS>
 ```
+
+An example:
+
+```bash
+python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --model model/model_vgg19_5.pth --data data/flickr8k  
+```
+
+Working images:
+
+- data/flickr8k/imgs/667626_18933d713e.jpg
+- data/flickr8k/imgs/3718892835_a3e74a3417.jpg
 
 ## Captioned Examples
 

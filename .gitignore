@@ -169,3 +169,7 @@ data/*
 model/model*
 
 runs/
+wandb/
+
+.idea/
+.DS_Store

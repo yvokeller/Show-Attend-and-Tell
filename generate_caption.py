@@ -21,12 +21,16 @@ from decoder import Decoder
 from encoder import Encoder
 from train import data_transforms
 
+if torch.backends.mps.is_available():
+    mps_device = torch.device("mps")
+
 
 def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_size=3, smooth=True):
     img = pil_loader(img_path)
     img = data_transforms(img)
     img = torch.FloatTensor(img)
     img = img.unsqueeze(0)
+    # img = img.to(mps_device)
 
     img_features = encoder(img)
     img_features = img_features.expand(beam_size, img_features.size(1), img_features.size(2))
@@ -75,9 +79,11 @@ def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_s
             shape_size = 7
 
         if smooth:
-            alpha_img = skimage.transform.pyramid_expand(alpha[idx, :].reshape(shape_size, shape_size), upscale=16, sigma=20)
+            alpha_img = skimage.transform.pyramid_expand(alpha[idx, :].reshape(shape_size, shape_size), upscale=16,
+                                                         sigma=20)
         else:
-            alpha_img = skimage.transform.resize(alpha[idx, :].reshape(shape_size,shape_size), [img.shape[0], img.shape[1]])
+            alpha_img = skimage.transform.resize(alpha[idx, :].reshape(shape_size, shape_size),
+                                                 [img.shape[0], img.shape[1]])
         plt.imshow(alpha_img, alpha=0.8)
         plt.set_cmap(cm.Greys_r)
         plt.axis('off')
@@ -89,7 +95,7 @@ if __name__ == "__main__":
     parser.add_argument('--img-path', type=str, help='path to image')
     parser.add_argument('--network', choices=['vgg19', 'resnet152'], default='vgg19',
                         help='Network to use in the encoder (default: vgg19)')
-    parser.add_argument('--model', type=str, help='path to model paramters')
+    parser.add_argument('--model', type=str, help='path to model parameters')
     parser.add_argument('--data-path', type=str, default='data/coco',
                         help='path to data (default: data/coco)')
     args = parser.parse_args()
@@ -104,6 +110,8 @@ if __name__ == "__main__":
 
     # encoder.cuda()
     # decoder.cuda()
+    # encoder.to(mps_device)
+    # decoder.to(mps_device)
 
     encoder.eval()
     decoder.eval()

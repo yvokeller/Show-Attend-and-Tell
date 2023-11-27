@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from nltk.translate.bleu_score import corpus_bleu
-from tensorboardX import SummaryWriter
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence
 from torchvision import transforms
@@ -13,6 +12,7 @@ from decoder import Decoder
 from encoder import Encoder
 from utils import AverageMeter, accuracy, calculate_caption_lengths
 
+import wandb
 
 data_transforms = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -24,8 +24,9 @@ data_transforms = transforms.Compose([
 if torch.backends.mps.is_available():
     mps_device = torch.device("mps")
 
+
 def main(args):
-    writer = SummaryWriter()
+    wandb.init(project='show-attend-and-tell', entity='yvokeller', config=args)
 
     word_dict = json.load(open(args.data + '/word_dict.json', 'r'))
     vocabulary_size = len(word_dict)
@@ -52,18 +53,20 @@ def main(args):
 
     print('Starting training with {}'.format(args))
     for epoch in range(1, args.epochs + 1):
-        scheduler.step()
         train(epoch, encoder, decoder, optimizer, cross_entropy_loss,
-              train_loader, word_dict, args.alpha_c, args.log_interval, writer)
+              train_loader, word_dict, args.alpha_c, args.log_interval)
         validate(epoch, encoder, decoder, cross_entropy_loss, val_loader,
-                 word_dict, args.alpha_c, args.log_interval, writer)
-        model_file = 'model/model_' + args.network + '_' + str(epoch) + '.pth'
+                 word_dict, args.alpha_c, args.log_interval)
+        scheduler.step()
+        # Save model and log to W&B
+        model_file = f'model/model_{args.network}_{epoch}.pth'
         torch.save(decoder.state_dict(), model_file)
-        print('Saved model to ' + model_file)
-    writer.close()
+        wandb.save(model_file)
+
+    wandb.finish()
 
 
-def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, writer):
+def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval):
     encoder.eval()
     decoder.train()
 
@@ -81,7 +84,7 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
         preds = pack_padded_sequence(preds, [len(pred) - 1 for pred in preds], batch_first=True)[0]
 
-        att_regularization = alpha_c * ((1 - alphas.sum(1))**2).mean()
+        att_regularization = alpha_c * ((1 - alphas.sum(1)) ** 2).mean()
 
         loss = cross_entropy_loss(preds, targets)
         loss += att_regularization
@@ -100,13 +103,12 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})'.format(
-                      batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
-    writer.add_scalar('train_loss', losses.avg, epoch)
-    writer.add_scalar('train_top1_acc', top1.avg, epoch)
-    writer.add_scalar('train_top5_acc', top5.avg, epoch)
+                batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
+
+        wandb.log({'train_loss': losses.avg, 'train_top1_acc': top1.avg, 'train_top5_acc': top5.avg, 'epoch': epoch})
 
 
-def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, writer):
+def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval):
     encoder.eval()
     decoder.eval()
 
@@ -127,7 +129,7 @@ def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict
             targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
             packed_preds = pack_padded_sequence(preds, [len(pred) - 1 for pred in preds], batch_first=True)[0]
 
-            att_regularization = alpha_c * ((1 - alphas.sum(1))**2).mean()
+            att_regularization = alpha_c * ((1 - alphas.sum(1)) ** 2).mean()
 
             loss = cross_entropy_loss(packed_preds, targets)
             loss += att_regularization
@@ -143,34 +145,38 @@ def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict
                 caps = []
                 for caption in cap_set:
                     cap = [word_idx for word_idx in caption
-                                    if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
+                           if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
                     caps.append(cap)
                 references.append(caps)
 
             word_idxs = torch.max(preds, dim=2)[1]
             for idxs in word_idxs.tolist():
                 hypotheses.append([idx for idx in idxs
-                                       if idx != word_dict['<start>'] and idx != word_dict['<pad>']])
+                                   if idx != word_dict['<start>'] and idx != word_dict['<pad>']])
 
             if batch_idx % log_interval == 0:
                 print('Validation Batch: [{0}/{1}]\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
                       'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})'.format(
-                          batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
-        writer.add_scalar('val_loss', losses.avg, epoch)
-        writer.add_scalar('val_top1_acc', top1.avg, epoch)
-        writer.add_scalar('val_top5_acc', top5.avg, epoch)
+                    batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
 
         bleu_1 = corpus_bleu(references, hypotheses, weights=(1, 0, 0, 0))
         bleu_2 = corpus_bleu(references, hypotheses, weights=(0.5, 0.5, 0, 0))
         bleu_3 = corpus_bleu(references, hypotheses, weights=(0.33, 0.33, 0.33, 0))
         bleu_4 = corpus_bleu(references, hypotheses)
 
-        writer.add_scalar('val_bleu1', bleu_1, epoch)
-        writer.add_scalar('val_bleu2', bleu_2, epoch)
-        writer.add_scalar('val_bleu3', bleu_3, epoch)
-        writer.add_scalar('val_bleu4', bleu_4, epoch)
+        wandb.log({
+            'train_loss': losses.avg,
+            'train_top1_acc': top1.avg,
+            'train_top5_acc': top5.avg,
+            'epoch': epoch,
+            'val_bleu1': bleu_1,
+            'val_bleu2': bleu_2,
+            'val_bleu3': bleu_3,
+            'val_bleu4': bleu_4
+        })
+
         print('Validation Epoch: {}\t'
               'BLEU-1 ({})\t'
               'BLEU-2 ({})\t'

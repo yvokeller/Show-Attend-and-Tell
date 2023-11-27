@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 from attention import Attention
 
-
 if torch.backends.mps.is_available():
     mps_device = torch.device("mps")
+
 
 class Decoder(nn.Module):
     def __init__(self, vocabulary_size, encoder_dim, tf=False):
@@ -116,6 +116,9 @@ class Decoder(nn.Module):
             prev_word_idxs = top_words / output.size(1)
             next_word_idxs = top_words % output.size(1)
 
+            prev_word_idxs = prev_word_idxs.long()
+            next_word_idxs = next_word_idxs.long()
+
             sentences = torch.cat((sentences[prev_word_idxs], next_word_idxs.unsqueeze(1)), dim=1)
             alphas = torch.cat((alphas[prev_word_idxs], alpha[prev_word_idxs].unsqueeze(1)), dim=1)
 
@@ -142,6 +145,9 @@ class Decoder(nn.Module):
                 break
             step += 1
 
+        if len(completed_sentences_preds) == 0:
+            print('No completed sentences found')
+        
         idx = completed_sentences_preds.index(max(completed_sentences_preds))
         sentence = completed_sentences[idx]
         alpha = completed_sentences_alphas[idx]
