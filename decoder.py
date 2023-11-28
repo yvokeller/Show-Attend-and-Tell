@@ -7,9 +7,10 @@ if torch.backends.mps.is_available():
 
 
 class Decoder(nn.Module):
-    def __init__(self, vocabulary_size, encoder_dim, tf=False):
+    def __init__(self, vocabulary_size, encoder_dim, tf=False, ado=False):
         super(Decoder, self).__init__()
         self.use_tf = tf
+        self.use_advanced_deep_output = ado
 
         # Initializing parameters
         self.vocabulary_size = vocabulary_size
@@ -24,14 +25,22 @@ class Decoder(nn.Module):
         self.f_beta = nn.Linear(512, encoder_dim)  # Gating scalar in attention mechanism
         self.sigmoid = nn.Sigmoid()
 
-        # Output layer and embedding
-        self.deep_output = nn.Linear(512, vocabulary_size)  # Maps LSTM outputs to vocabulary
-        self.dropout = nn.Dropout()
-
         # Attention and LSTM components
         self.attention = Attention(encoder_dim)  # Attention network
         self.embedding = nn.Embedding(vocabulary_size, 512)  # Embedding layer for input words
         self.lstm = nn.LSTMCell(512 + encoder_dim, 512)  # LSTM cell
+
+        # Simple DO: Layer for transforming LSTM state to vocabulary
+        self.deep_output = nn.Linear(512, vocabulary_size)  # Maps LSTM outputs to vocabulary
+        self.dropout = nn.Dropout()
+
+        # Advanced DO: Layers for transforming LSTM state, context vector and embedding for DO-RNN
+        hidden_dim, intermediate_dim = 512, 512
+        self.f_h = nn.Linear(hidden_dim, intermediate_dim)  # Transforms LSTM hidden state
+        self.f_z = nn.Linear(encoder_dim, intermediate_dim)  # Transforms context vector
+        self.f_out = nn.Linear(intermediate_dim, vocabulary_size)  # Transforms the combined vector (sum of embedding, LSTM state, and context vector) to vocabulary
+        self.relu = nn.ReLU()  # Activation function
+        self.dropout = nn.Dropout()
 
     def forward(self, img_features, captions):
         # Forward pass of the decoder
@@ -67,7 +76,13 @@ class Decoder(nn.Module):
 
             # LSTM forward pass
             h, c = self.lstm(lstm_input, (h, c))
-            output = self.deep_output(self.dropout(h))  # Generate word prediction
+
+            # Generate word prediction
+            if self.use_advanced_deep_output:
+                # TODO: explore alternative positions for dropout
+                output = self.advanced_deep_output(self.dropout(h), context, captions, embedding, t)
+            else:
+                output = self.deep_output(self.dropout(h))
 
             preds[:, t] = output
             alphas[:, t] = alpha  # Store attention weights
@@ -88,6 +103,18 @@ class Decoder(nn.Module):
         h = self.tanh(h)
 
         return h, c
+    
+    def advanced_deep_output(self, h, context, captions, embedding, t):
+        # Combine the LSTM state and context vector
+        h_transformed = self.relu(self.f_h(h))
+        z_transformed = self.relu(self.f_z(context))
+
+        # Sum the transformed vectors with the embedding
+        # TODO: check if embedding is correct for non-training mode
+        combined = h_transformed + z_transformed + self.embedding(captions[:, t].long() if self.training else embedding[:, t].long())
+
+        # Transform the combined vector & compute the output word probability
+        return self.relu(self.f_out(combined))
 
     def caption(self, img_features, beam_size):
         """

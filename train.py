@@ -32,7 +32,7 @@ def main(args):
     vocabulary_size = len(word_dict)
 
     encoder = Encoder(args.network)
-    decoder = Decoder(vocabulary_size, encoder.dim, args.tf)
+    decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado)
 
     if args.model:
         decoder.load_state_dict(torch.load(args.model))
@@ -44,11 +44,11 @@ def main(args):
     cross_entropy_loss = nn.CrossEntropyLoss().to(mps_device)
 
     train_loader = torch.utils.data.DataLoader(
-        ImageCaptionDataset(data_transforms, args.data),
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction),
         batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     val_loader = torch.utils.data.DataLoader(
-        ImageCaptionDataset(data_transforms, args.data, split_type='val'),
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, split_type='val'),
         batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     print('Starting training with {}'.format(args))
@@ -167,9 +167,9 @@ def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict
         bleu_4 = corpus_bleu(references, hypotheses)
 
         wandb.log({
-            'train_loss': losses.avg,
-            'train_top1_acc': top1.avg,
-            'train_top5_acc': top5.avg,
+            'val_loss': losses.avg,
+            'val_top1_acc': top1.avg,
+            'val_top5_acc': top5.avg,
             'epoch': epoch,
             'val_bleu1': bleu_1,
             'val_bleu2': bleu_2,
@@ -201,9 +201,13 @@ if __name__ == "__main__":
     parser.add_argument('--data', type=str, default='data/coco',
                         help='path to data images (default: data/coco)')
     parser.add_argument('--network', choices=['vgg19', 'resnet152', 'densenet161'], default='vgg19',
-                        help='Network to use in the encoder (default: vgg19)')
+                        help='network to use in the encoder (default: vgg19)')
     parser.add_argument('--model', type=str, help='path to model')
     parser.add_argument('--tf', action='store_true', default=False,
-                        help='Use teacher forcing when training LSTM (default: False)')
+                        help='use teacher forcing when training LSTM (default: False)')
+    parser.add_argument('--ado', action='store_true', default=False,
+                        help='use advanced deep output (default: False)')
+    parser.add_argument('--fraction', type=float, default=1.0, metavar='F',
+                        help='fraction of dataset to use (default: 1.0)')
 
     main(parser.parse_args())

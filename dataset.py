@@ -12,7 +12,7 @@ def pil_loader(path):
 
 
 class ImageCaptionDataset(Dataset):
-    def __init__(self, transform, data_path, split_type='train'):
+    def __init__(self, transform, data_path, split_type='train', fraction=1.0):
         super(ImageCaptionDataset, self).__init__()
         self.split_type = split_type
         self.transform = transform
@@ -21,6 +21,11 @@ class ImageCaptionDataset(Dataset):
         self.caption_img_idx = {}
         self.img_paths = json.load(open(data_path + '/{}_img_paths.json'.format(split_type), 'r'))
         self.captions = json.load(open(data_path + '/{}_captions.json'.format(split_type), 'r'))
+
+        # reduced dataset by fraction (for debugging)
+        if fraction != 1.0:
+            self.img_paths = self.img_paths[:int(len(self.img_paths) * fraction)]
+            self.captions = self.captions[:int(len(self.captions) * fraction)]
 
     def __getitem__(self, index):
         img_path = self.img_paths[index]
