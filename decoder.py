@@ -7,38 +7,53 @@ if torch.backends.mps.is_available():
 
 
 class Decoder(nn.Module):
-    def __init__(self, vocabulary_size, encoder_dim, tf=False, ado=False):
+    def __init__(self, vocabulary_size, encoder_dim, tf=False, ado=False, bert=False):
         super(Decoder, self).__init__()
         self.use_tf = tf
         self.use_advanced_deep_output = ado
 
         # Initializing parameters
-        self.vocabulary_size = vocabulary_size
         self.encoder_dim = encoder_dim
 
+        # Embeddings
+        if bert:
+            from transformers import BertModel, BertTokenizer
+            self.bert_model = BertModel.from_pretrained('bert-base-uncased')
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+            self.vocabulary_size = self.bert_model.config.vocab_size
+            self.embedding_size = self.bert_model.config.hidden_size # 768
+
+            # Embedding layer using BERT's embeddings
+            self.embedding = self.bert_model.get_input_embeddings()
+
+            print('BERT vocabulary size:', self.vocabulary_size)
+        else:
+            self.vocabulary_size = vocabulary_size
+            self.embedding_size = 512
+            self.embedding = nn.Embedding(self.vocabulary_size, self.embedding_size)  # Embedding layer for input words
+
         # Initial LSTM cell state generators
-        self.init_h = nn.Linear(encoder_dim, 512)  # For hidden state
-        self.init_c = nn.Linear(encoder_dim, 512)  # For cell state
+        self.init_h = nn.Linear(encoder_dim, self.embedding_size)  # For hidden state
+        self.init_c = nn.Linear(encoder_dim, self.embedding_size)  # For cell state
         self.tanh = nn.Tanh()
 
         # Attention mechanism related layers
-        self.f_beta = nn.Linear(512, encoder_dim)  # Gating scalar in attention mechanism
+        self.f_beta = nn.Linear(self.embedding_size, encoder_dim)  # Gating scalar in attention mechanism
         self.sigmoid = nn.Sigmoid()
 
         # Attention and LSTM components
-        self.attention = Attention(encoder_dim)  # Attention network
-        self.embedding = nn.Embedding(vocabulary_size, 512)  # Embedding layer for input words
-        self.lstm = nn.LSTMCell(512 + encoder_dim, 512)  # LSTM cell
+        self.attention = Attention(encoder_dim, self.embedding_size)  # Attention network
+        self.lstm = nn.LSTMCell(self.embedding_size + encoder_dim, self.embedding_size)  # LSTM cell
 
         # Simple DO: Layer for transforming LSTM state to vocabulary
-        self.deep_output = nn.Linear(512, vocabulary_size)  # Maps LSTM outputs to vocabulary
+        self.deep_output = nn.Linear(self.embedding_size, self.vocabulary_size)  # Maps LSTM outputs to vocabulary
         self.dropout = nn.Dropout()
 
         # Advanced DO: Layers for transforming LSTM state, context vector and embedding for DO-RNN
-        hidden_dim, intermediate_dim = 512, 512
+        hidden_dim, intermediate_dim = self.embedding_size, self.embedding_size
         self.f_h = nn.Linear(hidden_dim, intermediate_dim)  # Transforms LSTM hidden state
         self.f_z = nn.Linear(encoder_dim, intermediate_dim)  # Transforms context vector
-        self.f_out = nn.Linear(intermediate_dim, vocabulary_size)  # Transforms the combined vector (sum of embedding, LSTM state, and context vector) to vocabulary
+        self.f_out = nn.Linear(intermediate_dim, self.vocabulary_size)  # Transforms the combined vector (sum of embedding, LSTM state, and context vector) to vocabulary
         self.relu = nn.ReLU()  # Activation function
         self.dropout = nn.Dropout()
 

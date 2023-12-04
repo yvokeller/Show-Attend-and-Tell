@@ -35,6 +35,8 @@ Place the Flickr8k data split JSON file in `data/flickr8k/`. It should be named 
 
 Run `python generate_json_data.py --split-path='data/flickr8k/dataset.json' --data-path='data/flickr8k'` to generate the JSON files needed for training.
 
+If you want to use pre-trained BERT embeddings (`bert=True`), additionally run `python generate_json_data_bert.py --split-path='data/flickr8k/dataset.json' --data-path='data/flickr8k'` to generate the BERT-tokenized caption JSON files.
+
 ### COCO
 
 Download the COCO dataset training and validation images. Put them in `data/coco/imgs/train2014` and `data/coco/imgs/val2014` respectively.
@@ -48,6 +50,12 @@ Start the training by running:
 
 ```bash
 python train.py --data=data/flickr8k
+```
+
+or to make a small test run:
+
+```bash
+python train.py --data=data/flickr8k --tf --ado --epochs=1 --frac=0.02 --log-interval=2
 ```
 
 The models will be saved in `model/` and the training statistics are uploaded to your W&B account.

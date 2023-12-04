@@ -32,7 +32,7 @@ def main(args):
     vocabulary_size = len(word_dict)
 
     encoder = Encoder(args.network)
-    decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado)
+    decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado, bert=args.bert)
 
     if args.model:
         decoder.load_state_dict(torch.load(args.model))
@@ -44,11 +44,11 @@ def main(args):
     cross_entropy_loss = nn.CrossEntropyLoss().to(mps_device)
 
     train_loader = torch.utils.data.DataLoader(
-        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction),
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert),
         batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     val_loader = torch.utils.data.DataLoader(
-        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, split_type='val'),
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='val'),
         batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     print('Starting training with {}'.format(args))
@@ -209,5 +209,7 @@ if __name__ == "__main__":
                         help='use advanced deep output (default: False)')
     parser.add_argument('--fraction', type=float, default=1.0, metavar='F',
                         help='fraction of dataset to use (default: 1.0)')
+    parser.add_argument('--bert', action='store_true', default=False,
+                        help='use bert for word embeddings (default: False)')
 
     main(parser.parse_args())

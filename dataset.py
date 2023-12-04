@@ -12,15 +12,16 @@ def pil_loader(path):
 
 
 class ImageCaptionDataset(Dataset):
-    def __init__(self, transform, data_path, split_type='train', fraction=1.0):
+    def __init__(self, transform, data_path, split_type='train', fraction=1.0, bert=False):
         super(ImageCaptionDataset, self).__init__()
         self.split_type = split_type
         self.transform = transform
-
-        self.word_count = Counter()
-        self.caption_img_idx = {}
         self.img_paths = json.load(open(data_path + '/{}_img_paths.json'.format(split_type), 'r'))
-        self.captions = json.load(open(data_path + '/{}_captions.json'.format(split_type), 'r'))
+
+        if bert==True:
+            self.captions = json.load(open(data_path + '/{}_captions_bert.json'.format(split_type), 'r'))
+        else:
+            self.captions = json.load(open(data_path + '/{}_captions.json'.format(split_type), 'r'))
 
         # reduced dataset by fraction (for debugging)
         if fraction != 1.0:
