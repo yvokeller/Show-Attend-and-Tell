@@ -25,23 +25,27 @@ if torch.backends.mps.is_available():
     mps_device = torch.device("mps")
 
 
-def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_size=3, smooth=True):
+def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_size=3, smooth=True, bert=False, tokenizer=None):
     img = pil_loader(img_path)
     img = data_transforms(img)
     img = torch.FloatTensor(img)
     img = img.unsqueeze(0)
-    # img = img.to(mps_device)
 
     img_features = encoder(img)
     img_features = img_features.expand(beam_size, img_features.size(1), img_features.size(2))
     sentence, alpha = decoder.caption(img_features, beam_size)
 
-    token_dict = {idx: word for word, idx in word_dict.items()}
-    sentence_tokens = []
-    for word_idx in sentence:
-        sentence_tokens.append(token_dict[word_idx])
-        if word_idx == word_dict['<eos>']:
-            break
+    if bert == True:
+        # Decoding with BERT tokenizer
+        sentence_tokens = tokenizer.decode(sentence, skip_special_tokens=True).split()
+    else:
+        # Decoding with custom word dictionary
+        token_dict = {idx: word for word, idx in word_dict.items()}
+        sentence_tokens = []
+        for word_idx in sentence:
+            sentence_tokens.append(token_dict[word_idx])
+            if word_idx == word_dict['<eos>']:
+                break
 
     img = Image.open(img_path)
     w, h = img.size
@@ -93,27 +97,37 @@ def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_s
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Show, Attend and Tell Caption Generator')
     parser.add_argument('--img-path', type=str, help='path to image')
-    parser.add_argument('--network', choices=['vgg19', 'resnet152'], default='vgg19',
-                        help='Network to use in the encoder (default: vgg19)')
     parser.add_argument('--model', type=str, help='path to model parameters')
-    parser.add_argument('--data-path', type=str, default='data/coco',
-                        help='path to data (default: data/coco)')
     args = parser.parse_args()
+    
+    # Load model config
+    model_dir = os.path.dirname(args.model)
+    with open(os.path.join(model_dir, 'model_config.json'), 'r') as f:
+        model_config = json.load(f)
 
-    word_dict = json.load(open(args.data_path + '/word_dict.json', 'r'))
-    vocabulary_size = len(word_dict)
+    network = model_config['network']
+    data_path = model_config['data']
+    ado = model_config['ado']
+    bert = model_config['bert']
 
-    encoder = Encoder(network=args.network)
-    decoder = Decoder(vocabulary_size, encoder.dim)
+    if bert == True:
+        from transformers import BertTokenizer, BertModel 
+        bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        bert_model = BertModel.from_pretrained('bert-base-uncased')
+        vocabulary_size = bert_model.config.vocab_size
+    else:
+        word_dict = json.load(open(data_path + '/word_dict.json', 'r'))
+        vocabulary_size = len(word_dict)
+
+    encoder = Encoder(network=network)
+    decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert)
 
     decoder.load_state_dict(torch.load(args.model))
-
-    # encoder.cuda()
-    # decoder.cuda()
-    # encoder.to(mps_device)
-    # decoder.to(mps_device)
 
     encoder.eval()
     decoder.eval()
 
-    generate_caption_visualization(encoder, decoder, args.img_path, word_dict)
+    if bert == True:
+        generate_caption_visualization(encoder, decoder, args.img_path, None, bert=bert, tokenizer=bert_tokenizer)
+    else:
+        generate_caption_visualization(encoder, decoder, args.img_path, word_dict)

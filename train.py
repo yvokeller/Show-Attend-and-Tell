@@ -10,7 +10,7 @@ from torchvision import transforms
 from dataset import ImageCaptionDataset
 from decoder import Decoder
 from encoder import Encoder
-from utils import AverageMeter, accuracy, calculate_caption_lengths
+from utils import AverageMeter, accuracy, calculate_caption_lengths, calculate_caption_lengths_bert
 
 import wandb
 
@@ -28,8 +28,16 @@ if torch.backends.mps.is_available():
 def main(args):
     wandb.init(project='show-attend-and-tell', entity='yvokeller', config=args)
 
-    word_dict = json.load(open(args.data + '/word_dict.json', 'r'))
-    vocabulary_size = len(word_dict)
+    bert_tokenizer = None
+    word_dict = None
+    if args.bert == True:
+        from transformers import BertTokenizer, BertModel 
+        bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        bert_model = BertModel.from_pretrained('bert-base-uncased')
+        vocabulary_size = bert_model.config.vocab_size
+    else:
+        word_dict = json.load(open(args.data + '/word_dict.json', 'r'))
+        vocabulary_size = len(word_dict)
 
     encoder = Encoder(args.network)
     decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado, bert=args.bert)
@@ -54,19 +62,25 @@ def main(args):
     print('Starting training with {}'.format(args))
     for epoch in range(1, args.epochs + 1):
         train(epoch, encoder, decoder, optimizer, cross_entropy_loss,
-              train_loader, word_dict, args.alpha_c, args.log_interval)
+              train_loader, word_dict, args.alpha_c, args.log_interval, bert=args.bert, tokenizer=bert_tokenizer)
         validate(epoch, encoder, decoder, cross_entropy_loss, val_loader,
-                 word_dict, args.alpha_c, args.log_interval)
+                 word_dict, args.alpha_c, args.log_interval, bert=args.bert, tokenizer=bert_tokenizer)
         scheduler.step()
+
         # Save model and log to W&B
         model_file = f'model/model_{args.network}_{epoch}.pth'
         torch.save(decoder.state_dict(), model_file)
         wandb.save(model_file)
 
+        # Save model config
+        with open('model/model_config.json', 'w') as f:
+            json.dump(vars(args), f)
+        wandb.save('model/model_config.json')
+
     wandb.finish()
 
 
-def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval):
+def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None):
     encoder.eval()
     decoder.train()
 
@@ -91,7 +105,10 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         loss.backward()
         optimizer.step()
 
-        total_caption_length = calculate_caption_lengths(word_dict, captions)
+        if bert == True:
+            total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
+        else:
+            total_caption_length = calculate_caption_lengths(captions, word_dict)
         acc1 = accuracy(preds, targets, 1)
         acc5 = accuracy(preds, targets, 5)
         losses.update(loss.item(), total_caption_length)
@@ -108,7 +125,7 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         wandb.log({'train_loss': losses.avg, 'train_top1_acc': top1.avg, 'train_top5_acc': top5.avg, 'epoch': epoch})
 
 
-def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval):
+def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None):
     encoder.eval()
     decoder.eval()
 
@@ -134,25 +151,44 @@ def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict
             loss = cross_entropy_loss(packed_preds, targets)
             loss += att_regularization
 
-            total_caption_length = calculate_caption_lengths(word_dict, captions)
+            if bert == True:
+                total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
+            else:
+                total_caption_length = calculate_caption_lengths(captions, word_dict)
+                
             acc1 = accuracy(packed_preds, targets, 1)
             acc5 = accuracy(packed_preds, targets, 5)
             losses.update(loss.item(), total_caption_length)
             top1.update(acc1, total_caption_length)
             top5.update(acc5, total_caption_length)
 
-            for cap_set in all_captions.tolist():
-                caps = []
-                for caption in cap_set:
-                    cap = [word_idx for word_idx in caption
-                           if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
-                    caps.append(cap)
-                references.append(caps)
+            if bert == True:
+                for cap_set in all_captions.tolist():
+                    caps = []
+                    for caption in cap_set:
+                        # Decode each caption to text and split into words
+                        cap_text = tokenizer.decode(caption, skip_special_tokens=True)
+                        caps.append(cap_text.split())
+                    references.append(caps)
 
-            word_idxs = torch.max(preds, dim=2)[1]
-            for idxs in word_idxs.tolist():
-                hypotheses.append([idx for idx in idxs
-                                   if idx != word_dict['<start>'] and idx != word_dict['<pad>']])
+                word_idxs = torch.max(preds, dim=2)[1]
+                for idxs in word_idxs.tolist():
+                    # Decode each predicted sequence to text and split into words
+                    hyp_text = tokenizer.decode(idxs, skip_special_tokens=True)
+                    hypotheses.append(hyp_text.split())
+            else:
+                for cap_set in all_captions.tolist():
+                    caps = []
+                    for caption in cap_set:
+                        cap = [word_idx for word_idx in caption
+                            if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
+                        caps.append(cap)
+                    references.append(caps)
+
+                word_idxs = torch.max(preds, dim=2)[1]
+                for idxs in word_idxs.tolist():
+                    hypotheses.append([idx for idx in idxs
+                                    if idx != word_dict['<start>'] and idx != word_dict['<pad>']])
 
             if batch_idx % log_interval == 0:
                 print('Validation Batch: [{0}/{1}]\t'

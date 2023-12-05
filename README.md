@@ -64,6 +64,8 @@ My training statistics are available here: [W&B](https://wandb.ai/yvokeller/show
 
 ## To Generate Captions
 
+Note that together with the model parameters, a model_config.json is saved. This is required by `generate_caption.py` to properly load the model.
+
 ```bash
 python generate_caption.py --img-path <PATH_TO_IMG> --model <PATH_TO_MODEL_PARAMETERS>
 ```
@@ -71,7 +73,7 @@ python generate_caption.py --img-path <PATH_TO_IMG> --model <PATH_TO_MODEL_PARAM
 An example:
 
 ```bash
-python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --model model/model_vgg19_5.pth --data data/flickr8k  
+python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --model model/model_vgg19_5.pth
 ```
 
 Working images:

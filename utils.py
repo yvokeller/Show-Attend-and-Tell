@@ -27,11 +27,21 @@ def accuracy(preds, targets, k):
     return correct_total.item() * (100.0 / batch_size)
 
 
-def calculate_caption_lengths(word_dict, captions):
+def calculate_caption_lengths(captions, word_dict):
     lengths = 0
     for caption_tokens in captions:
         for token in caption_tokens:
             if token in (word_dict['<start>'], word_dict['<eos>'], word_dict['<pad>']):
+                continue
+            else:
+                lengths += 1
+    return lengths
+
+def calculate_caption_lengths_bert(captions, tokenizer):
+    lengths = 0
+    for caption_tokens in captions:
+        for token in caption_tokens:
+            if token in (tokenizer.cls_token_id, tokenizer.sep_token_id, tokenizer.pad_token_id):
                 continue
             else:
                 lengths += 1
