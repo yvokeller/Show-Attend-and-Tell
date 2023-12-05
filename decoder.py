@@ -25,8 +25,6 @@ class Decoder(nn.Module):
 
             # Embedding layer using BERT's embeddings
             self.embedding = self.bert_model.get_input_embeddings()
-
-            print('BERT vocabulary size:', self.vocabulary_size)
         else:
             self.vocabulary_size = vocabulary_size
             self.embedding_size = 512
