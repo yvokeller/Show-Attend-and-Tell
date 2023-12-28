@@ -39,6 +39,7 @@ class ImageCaptionDataset(Dataset):
 
         matching_idxs = [idx for idx, path in enumerate(self.img_paths) if path == img_path]
         all_captions = [self.captions[idx] for idx in matching_idxs]
+        # TODO: check if self.captions[index] can be multiple captions???
         return torch.FloatTensor(img), torch.tensor(self.captions[index]), torch.tensor(all_captions)
 
     def __len__(self):

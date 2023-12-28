@@ -11,12 +11,13 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.use_tf = tf
         self.use_advanced_deep_output = ado
+        self.use_bert = bert
 
         # Initializing parameters
         self.encoder_dim = encoder_dim
 
         # Embeddings
-        if bert:
+        if bert == True:
             from transformers import BertModel, BertTokenizer
             self.bert_model = BertModel.from_pretrained('bert-base-uncased')
             self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -25,6 +26,10 @@ class Decoder(nn.Module):
 
             # Embedding layer using BERT's embeddings
             self.embedding = self.bert_model.get_input_embeddings()
+
+            # Freeze the BERT embeddings
+            for param in self.embedding.parameters():
+                param.requires_grad = False
         else:
             self.vocabulary_size = vocabulary_size
             self.embedding_size = 512
@@ -43,16 +48,18 @@ class Decoder(nn.Module):
         self.attention = Attention(encoder_dim, self.embedding_size)  # Attention network
         self.lstm = nn.LSTMCell(self.embedding_size + encoder_dim, self.embedding_size)  # LSTM cell
 
+        # Deep output layers
+        if self.use_advanced_deep_output:
+            # Advanced DO: Layers for transforming LSTM state, context vector and embedding for DO-RNN
+            hidden_dim, intermediate_dim = self.embedding_size, self.embedding_size
+            self.f_h = nn.Linear(hidden_dim, intermediate_dim)  # Transforms LSTM hidden state
+            self.f_z = nn.Linear(encoder_dim, intermediate_dim)  # Transforms context vector
+            self.f_out = nn.Linear(intermediate_dim, self.vocabulary_size)  # Transforms the combined vector (sum of embedding, LSTM state, and context vector) to vocabulary
+            self.relu = nn.ReLU()  # Activation function
+            self.dropout = nn.Dropout()
+        
         # Simple DO: Layer for transforming LSTM state to vocabulary
         self.deep_output = nn.Linear(self.embedding_size, self.vocabulary_size)  # Maps LSTM outputs to vocabulary
-        self.dropout = nn.Dropout()
-
-        # Advanced DO: Layers for transforming LSTM state, context vector and embedding for DO-RNN
-        hidden_dim, intermediate_dim = self.embedding_size, self.embedding_size
-        self.f_h = nn.Linear(hidden_dim, intermediate_dim)  # Transforms LSTM hidden state
-        self.f_z = nn.Linear(encoder_dim, intermediate_dim)  # Transforms context vector
-        self.f_out = nn.Linear(intermediate_dim, self.vocabulary_size)  # Transforms the combined vector (sum of embedding, LSTM state, and context vector) to vocabulary
-        self.relu = nn.ReLU()  # Activation function
         self.dropout = nn.Dropout()
 
     def forward(self, img_features, captions):
@@ -64,11 +71,15 @@ class Decoder(nn.Module):
 
         # Teacher forcing setup
         max_timespan = max([len(caption) for caption in captions]) - 1
-        prev_words = torch.zeros(batch_size, 1).long().to(mps_device)
+        prev_words = torch.zeros(batch_size, 1).long().to(mps_device) # TODO: Poblematic with BERT! # 0's as start token for every caption
+        
+        # Convert caption tokens to their embeddings
         if self.use_tf:
-            embedding = self.embedding(captions) if self.training else self.embedding(prev_words)
+            # current_embedding = self.embedding(captions) if self.training else self.embedding(prev_words) # TODO: I think this else case never happens
+            current_caption_token_embeddings = self.embedding(captions)
         else:
-            embedding = self.embedding(prev_words)
+            # case that we are in inference mode or not using teacher forcing
+            current_caption_token_embeddings = self.embedding(prev_words)
 
         # Preparing to store predictions and attention weights
         preds = torch.zeros(batch_size, max_timespan, self.vocabulary_size).to(mps_device)
@@ -81,11 +92,14 @@ class Decoder(nn.Module):
             gated_context = gate * context  # Apply gate to context
 
             # Prepare LSTM input
-            if self.use_tf and self.training:
-                lstm_input = torch.cat((embedding[:, t], gated_context), dim=1)
+            # if self.use_tf and self.training: # TODO: can probably be simplified
+            if self.use_tf:
+                # TODO: Check, I think here we have to splice, as current_embedding already contains the whole caption
+                lstm_input = torch.cat((current_caption_token_embeddings[:, t], gated_context), dim=1) # embedding[:, t]
             else:
-                embedding = embedding.squeeze(1) if embedding.dim() == 3 else embedding
-                lstm_input = torch.cat((embedding, gated_context), dim=1)
+                print('Prepare LSTM input current_embedding.shape', current_caption_token_embeddings.shape)
+                current_caption_token_embeddings = current_caption_token_embeddings.squeeze(1) if current_caption_token_embeddings.dim() == 3 else current_caption_token_embeddings # TODO: What is the optional squeeze for?
+                lstm_input = torch.cat((current_caption_token_embeddings, gated_context), dim=1)
 
             # LSTM forward pass
             h, c = self.lstm(lstm_input, (h, c))
@@ -93,7 +107,11 @@ class Decoder(nn.Module):
             # Generate word prediction
             if self.use_advanced_deep_output:
                 # TODO: explore alternative positions for dropout
-                output = self.advanced_deep_output(self.dropout(h), context, captions, embedding, t)
+                # output = self.advanced_deep_output(self.dropout(h), context, captions, embedding, t)
+                if self.use_tf:
+                    output = self.advanced_deep_output(self.dropout(h), context, current_caption_token_embeddings[:, t])
+                else:
+                    output = self.advanced_deep_output(self.dropout(h), context, current_caption_token_embeddings)
             else:
                 output = self.deep_output(self.dropout(h))
 
@@ -101,8 +119,10 @@ class Decoder(nn.Module):
             alphas[:, t] = alpha  # Store attention weights
 
             # Prepare next input word
-            if not self.training or not self.use_tf:
-                embedding = self.embedding(output.max(1)[1].reshape(batch_size, 1))
+            # if not self.training or not self.use_tf:
+            if not self.use_tf: # TODO: my understanding is this needs to be done for training without tf too???
+                current_caption_token_embeddings = self.embedding(output.max(1)[1].reshape(batch_size, 1))
+                print('repare next input word current_embedding.shape', current_caption_token_embeddings.shape)
         return preds, alphas
 
     def get_init_lstm_state(self, img_features):
@@ -117,14 +137,14 @@ class Decoder(nn.Module):
 
         return h, c
     
-    def advanced_deep_output(self, h, context, captions, embedding, t):
+    def advanced_deep_output(self, h, context, current_embedding):
         # Combine the LSTM state and context vector
         h_transformed = self.relu(self.f_h(h))
         z_transformed = self.relu(self.f_z(context))
 
         # Sum the transformed vectors with the embedding
-        # TODO: check if embedding is correct for non-training mode
-        combined = h_transformed + z_transformed + self.embedding(captions[:, t].long() if self.training else embedding[:, t].long())
+        print('ADO shapes', h_transformed.shape, z_transformed.shape, current_embedding.shape)
+        combined = h_transformed + z_transformed + current_embedding
 
         # Transform the combined vector & compute the output word probability
         return self.relu(self.f_out(combined))
@@ -135,7 +155,10 @@ class Decoder(nn.Module):
         similar implementation as the author in
         https://github.com/kelvinxu/arctic-captions/blob/master/generate_caps.py
         """
-        prev_words = torch.zeros(beam_size, 1).long()
+        if self.use_bert == True:
+            prev_words = torch.full((beam_size, 1), self.tokenizer.cls_token_id).long()
+        else:
+            prev_words = torch.zeros(beam_size, 1).long()
 
         sentences = prev_words
         top_preds = torch.zeros(beam_size, 1)
@@ -156,7 +179,14 @@ class Decoder(nn.Module):
 
             lstm_input = torch.cat((embedding, gated_context), dim=1)
             h, c = self.lstm(lstm_input, (h, c))
-            output = self.deep_output(h)
+
+            if self.use_advanced_deep_output:
+                print('before squeeze', self.embedding(prev_words).shape)
+                current_embedding = self.embedding(prev_words).squeeze(1)
+                print('after squeeze', current_embedding.shape)
+                output = self.advanced_deep_output(h, context, current_embedding)
+            else:
+                output = self.deep_output(h)
             output = top_preds.expand_as(output) + output
 
             if step == 1:
@@ -172,7 +202,7 @@ class Decoder(nn.Module):
             sentences = torch.cat((sentences[prev_word_idxs], next_word_idxs.unsqueeze(1)), dim=1)
             alphas = torch.cat((alphas[prev_word_idxs], alpha[prev_word_idxs].unsqueeze(1)), dim=1)
 
-            incomplete = [idx for idx, next_word in enumerate(next_word_idxs) if next_word != 1]
+            incomplete = [idx for idx, next_word in enumerate(next_word_idxs) if next_word != 1 and next_word != 102] # 1: <eos>, 102: [SEP]
             complete = list(set(range(len(next_word_idxs))) - set(incomplete))
 
             if len(complete) > 0:
@@ -197,8 +227,14 @@ class Decoder(nn.Module):
 
         if len(completed_sentences_preds) == 0:
             print('No completed sentences found')
-        
+
+        # Print all completed sentences if BERT is used
+        if self.use_bert:
+            for i, sentence in enumerate(completed_sentences):
+                print(f'Sentence {i}: {self.tokenizer.decode(sentence, skip_special_tokens=True)}')
+
         idx = completed_sentences_preds.index(max(completed_sentences_preds))
         sentence = completed_sentences[idx]
         alpha = completed_sentences_alphas[idx]
+  
         return sentence, alpha
