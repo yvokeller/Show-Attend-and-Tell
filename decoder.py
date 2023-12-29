@@ -71,19 +71,23 @@ class Decoder(nn.Module):
 
         # Teacher forcing setup
         max_timespan = max([len(caption) for caption in captions]) - 1
-        prev_words = torch.zeros(batch_size, 1).long().to(mps_device) # TODO: Poblematic with BERT! # 0's as start token for every caption
+
+        if self.use_bert:
+            start_token = torch.full((batch_size, 1), self.tokenizer.cls_token_id).long().to(mps_device)
+        else:
+            start_token = torch.zeros(batch_size, 1).long().to(mps_device)
         
         # Convert caption tokens to their embeddings
         if self.use_tf:
             # current_embedding = self.embedding(captions) if self.training else self.embedding(prev_words) # TODO: I think this else case never happens
-            current_caption_token_embeddings = self.embedding(captions)
+            caption_embedding = self.embedding(captions)
         else:
             # case that we are in inference mode or not using teacher forcing
-            current_caption_token_embeddings = self.embedding(prev_words)
+            previous_predicted_token_embedding = self.embedding(start_token)
 
         # Preparing to store predictions and attention weights
-        preds = torch.zeros(batch_size, max_timespan, self.vocabulary_size).to(mps_device)
-        alphas = torch.zeros(batch_size, max_timespan, img_features.size(1)).to(mps_device)
+        preds = torch.zeros(batch_size, max_timespan, self.vocabulary_size).to(mps_device) # [BATCH_SIZE, TIME_STEPS, VOC_SIZE] = one-hot encoded prediction of token for each time step
+        alphas = torch.zeros(batch_size, max_timespan, img_features.size(1)).to(mps_device) # [BATCH_SIZE, TIME_STEPS, NUM_SPATIAL_FEATURES] = attention weight of each feature map for each time step
 
         # Generating captions
         for t in range(max_timespan):
@@ -92,14 +96,11 @@ class Decoder(nn.Module):
             gated_context = gate * context  # Apply gate to context
 
             # Prepare LSTM input
-            # if self.use_tf and self.training: # TODO: can probably be simplified
             if self.use_tf:
-                # TODO: Check, I think here we have to splice, as current_embedding already contains the whole caption
-                lstm_input = torch.cat((current_caption_token_embeddings[:, t], gated_context), dim=1) # embedding[:, t]
+                lstm_input = torch.cat((caption_embedding[:, t], gated_context), dim=1)
             else:
-                print('Prepare LSTM input current_embedding.shape', current_caption_token_embeddings.shape)
-                current_caption_token_embeddings = current_caption_token_embeddings.squeeze(1) if current_caption_token_embeddings.dim() == 3 else current_caption_token_embeddings # TODO: What is the optional squeeze for?
-                lstm_input = torch.cat((current_caption_token_embeddings, gated_context), dim=1)
+                previous_predicted_token_embedding = previous_predicted_token_embedding.squeeze(1) if previous_predicted_token_embedding.dim() == 3 else previous_predicted_token_embedding # TODO: What is the optional squeeze for?
+                lstm_input = torch.cat((previous_predicted_token_embedding, gated_context), dim=1)
 
             # LSTM forward pass
             h, c = self.lstm(lstm_input, (h, c))
@@ -107,22 +108,21 @@ class Decoder(nn.Module):
             # Generate word prediction
             if self.use_advanced_deep_output:
                 # TODO: explore alternative positions for dropout
-                # output = self.advanced_deep_output(self.dropout(h), context, captions, embedding, t)
                 if self.use_tf:
-                    output = self.advanced_deep_output(self.dropout(h), context, current_caption_token_embeddings[:, t])
+                    output = self.advanced_deep_output(self.dropout(h), context, caption_embedding[:, t])
                 else:
-                    output = self.advanced_deep_output(self.dropout(h), context, current_caption_token_embeddings)
+                    output = self.advanced_deep_output(self.dropout(h), context, previous_predicted_token_embedding)
             else:
                 output = self.deep_output(self.dropout(h))
 
-            preds[:, t] = output
+            preds[:, t] = output  # Store predictions
             alphas[:, t] = alpha  # Store attention weights
 
             # Prepare next input word
-            # if not self.training or not self.use_tf:
-            if not self.use_tf: # TODO: my understanding is this needs to be done for training without tf too???
-                current_caption_token_embeddings = self.embedding(output.max(1)[1].reshape(batch_size, 1))
-                print('repare next input word current_embedding.shape', current_caption_token_embeddings.shape)
+            if not self.use_tf: # TODO: my understanding is this needs to be done for training with tf too??? -> WRONG, because for tf we already have the whole caption and don't want to overwrite with the predicted word
+                predicted_token_idxs = output.max(1)[1].reshape(batch_size, 1) # output.max(1)[1] = extract the index: [1] of the token with the highest probability: max(1)
+                previous_predicted_token_embedding = self.embedding(predicted_token_idxs)
+
         return preds, alphas
 
     def get_init_lstm_state(self, img_features):
@@ -143,7 +143,6 @@ class Decoder(nn.Module):
         z_transformed = self.relu(self.f_z(context))
 
         # Sum the transformed vectors with the embedding
-        print('ADO shapes', h_transformed.shape, z_transformed.shape, current_embedding.shape)
         combined = h_transformed + z_transformed + current_embedding
 
         # Transform the combined vector & compute the output word probability
@@ -181,9 +180,7 @@ class Decoder(nn.Module):
             h, c = self.lstm(lstm_input, (h, c))
 
             if self.use_advanced_deep_output:
-                print('before squeeze', self.embedding(prev_words).shape)
                 current_embedding = self.embedding(prev_words).squeeze(1)
-                print('after squeeze', current_embedding.shape)
                 output = self.advanced_deep_output(h, context, current_embedding)
             else:
                 output = self.deep_output(h)
