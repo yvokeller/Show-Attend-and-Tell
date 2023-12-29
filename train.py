@@ -6,6 +6,7 @@ from nltk.translate.bleu_score import corpus_bleu
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence
 from torchvision import transforms
+from PIL import Image
 
 from dataset import ImageCaptionDataset
 from decoder import Decoder
@@ -196,6 +197,32 @@ def validate(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict
                       'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
                       'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})'.format(
                     batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
+            
+            # Log captioned images to W&B
+            for i, img_tensor in enumerate(imgs):
+                if i == 5:
+                    break
+
+                # Step Move to CPU and detach from the computation graph
+                img_tensor = img_tensor.cpu().detach()
+
+                for t, m, s in zip(img_tensor, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]):
+                    t.mul_(s).add_(m)  # Reversing the normalization in-place
+
+                # Transpose the tensor to PIL-friendly format (H, W, C)
+                img_np = img_tensor.numpy().transpose(1, 2, 0)
+
+                # Rescale to [0, 255] and convert to uint8
+                img_np = (img_np * 255).astype('uint8')
+                img_displayable = Image.fromarray(img_np)
+
+                # Taking first reference and hypothesis captions
+                reference_caption = ' '.join(references[i][0])
+                hypothesis_caption = ' '.join(hypotheses[i])
+
+                wandb.log({
+                    f"Image {i}": wandb.Image(img_displayable, caption=f"Hyp: {hypothesis_caption}\nRef: {reference_caption}")
+                })
 
         bleu_1 = corpus_bleu(references, hypotheses, weights=(1, 0, 0, 0))
         bleu_2 = corpus_bleu(references, hypotheses, weights=(0.5, 0.5, 0, 0))
