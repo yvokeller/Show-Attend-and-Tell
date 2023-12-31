@@ -80,6 +80,7 @@ Working images:
 
 - data/flickr8k/imgs/667626_18933d713e.jpg
 - data/flickr8k/imgs/3718892835_a3e74a3417.jpg
+- data/flickr8k/imgs/44856031_0d82c2c7d1.jpg
 
 ## Captioned Examples
 
