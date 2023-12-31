@@ -3,11 +3,11 @@ import torch.nn as nn
 
 
 class Attention(nn.Module):
-    def __init__(self, encoder_dim):
+    def __init__(self, encoder_dim, embedding_size):
         super(Attention, self).__init__()
-        self.U = nn.Linear(512, 512)
-        self.W = nn.Linear(encoder_dim, 512)
-        self.v = nn.Linear(512, 1)
+        self.U = nn.Linear(embedding_size, embedding_size)
+        self.W = nn.Linear(encoder_dim, embedding_size)
+        self.v = nn.Linear(embedding_size, 1)
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(1)
 
@@ -19,4 +19,13 @@ class Attention(nn.Module):
         alpha = self.softmax(e)
         context = (img_features * alpha.unsqueeze(2)).sum(1)
         return context, alpha
-    
+
+class MeanContext(nn.Module):
+    def __init__(self, encoder_dim, embedding_size):
+        super(MeanContext, self).__init__()
+
+    def forward(self, img_features, hidden_state):
+        # Take the mean of num_features across img_features (batch_size, num_features, feature_dim)
+        context = img_features.mean(dim=1)
+        alpha = None
+        return context, alpha
