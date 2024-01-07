@@ -16,12 +16,12 @@ class ImageCaptionDataset(Dataset):
         super(ImageCaptionDataset, self).__init__()
         self.split_type = split_type
         self.transform = transform
-        self.img_paths = json.load(open(data_path + '/{}_img_paths.json'.format(split_type), 'r'))
+        self.img_paths = json.load(open(data_path + f'/{split_type}_img_paths.json', 'r'))
 
         if bert==True:
-            self.captions = json.load(open(data_path + '/{}_captions_bert.json'.format(split_type), 'r'))
+            self.captions = json.load(open(data_path + f'/{split_type}_captions_bert.json', 'r'))
         else:
-            self.captions = json.load(open(data_path + '/{}_captions.json'.format(split_type), 'r'))
+            self.captions = json.load(open(data_path + f'/{split_type}_captions.json', 'r'))
 
         # reduced dataset by fraction (for debugging)
         if fraction != 1.0:
@@ -39,7 +39,6 @@ class ImageCaptionDataset(Dataset):
 
         matching_idxs = [idx for idx, path in enumerate(self.img_paths) if path == img_path]
         all_captions = [self.captions[idx] for idx in matching_idxs]
-        # TODO: check if self.captions[index] can be multiple captions???
         return torch.FloatTensor(img), torch.tensor(self.captions[index]), torch.tensor(all_captions)
 
     def __len__(self):

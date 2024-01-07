@@ -173,11 +173,11 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
 
         wandb.log({'train_loss': losses.avg, 'train_top1_acc': top1.avg, 'train_top5_acc': top5.avg, 'epoch': epoch})
 
-class EvaluationMode(Enum):
+class EvalMode(Enum):
     VALIDATION = 'val'
     TEST = 'test'
 
-def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None, mode=EvaluationMode.VALIDATION):
+def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None, mode=EvalMode.VALIDATION):
     encoder.eval()
     decoder.eval()
 
@@ -185,8 +185,9 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
     top1 = AverageMeter()
     top5 = AverageMeter()
 
-    references = []
-    hypotheses = []
+    decoded_captions = [] # list of single assigned caption for each image
+    decoded_all_captions = [] # list of list of all captions present in dataset for each image, thus captions may repeat in different lists
+    decoded_hypotheses = [] # list of single predicted caption for each image
     with torch.no_grad():
         for batch_idx, (imgs, captions, all_captions) in enumerate(data_loader):
             imgs, captions = Variable(imgs).to(mps_device), Variable(captions).to(mps_device)
@@ -214,40 +215,47 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             top5.update(acc5, total_caption_length)
 
             if bert == True:
+                def bert_decode_caption(caption):
+                    # Decode predicted sequence to text and split into words
+                    return tokenizer.decode(caption, skip_special_tokens=True).split()
+                
+                for caption in captions.tolist():
+                    decoded_captions.append(bert_decode_caption(caption))
+
                 for cap_set in all_captions.tolist():
                     caps = []
                     for caption in cap_set:
-                        # Decode each caption to text and split into words
-                        cap_text = tokenizer.decode(caption, skip_special_tokens=True)
-                        caps.append(cap_text.split())
-                    references.append(caps)
+                        caps.append(bert_decode_caption(caption))
+                    decoded_all_captions.append(caps)
 
-                word_idxs = torch.max(preds, dim=2)[1]
-                for idxs in word_idxs.tolist():
-                    # Decode each predicted sequence to text and split into words
-                    hyp_text = tokenizer.decode(idxs, skip_special_tokens=True)
-                    hypotheses.append(hyp_text.split())
+                pred_captions = torch.max(preds, dim=2)[1]
+                for pred_caption in pred_captions.tolist():
+                    decoded_hypotheses.append(bert_decode_caption(pred_caption))
             else:
                 token_dict = {idx: word for word, idx in word_dict.items()}
+                def vanilla_decode_caption(caption):
+                    return [token_dict[word_idx] for word_idx in caption if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
+
+                for caption in captions.tolist():
+                    decoded_captions.append(vanilla_decode_caption(caption))
+
                 for cap_set in all_captions.tolist():
                     caps = []
                     for caption in cap_set:
-                        cap = [token_dict[word_idx] for word_idx in caption if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
-                        caps.append(cap)
-                    references.append(caps)
+                        caps.append(vanilla_decode_caption(caption))
+                    decoded_all_captions.append(caps)
 
-                word_idxs = torch.max(preds, dim=2)[1]
-                for idxs in word_idxs.tolist():
-                    hypotheses.append([token_dict[idx] for idx in idxs if idx != word_dict['<start>'] and idx != word_dict['<pad>']])
+                pred_captions = torch.max(preds, dim=2)[1]
+                for pred_caption in pred_captions.tolist():
+                    decoded_hypotheses.append(vanilla_decode_caption(pred_caption))
 
             if batch_idx % log_interval == 0:
                 print(f'{mode} Batch: [{batch_idx}/{len(data_loader)}]\t'
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
-                      'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})'.format(
-                    batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
+                    f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
+                    f'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
+                    f'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})')
             
-            if mode == EvaluationMode.TEST:
+            if mode == EvalMode.TEST:
                 # Calculate the start index for the current batch
                 batch_start_idx = batch_idx * len(imgs)
 
@@ -255,16 +263,16 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
                 for img_idx, img_tensor in enumerate(imgs):
                     global_caption_idx = batch_start_idx + img_idx  # Calculate the global index for global references and hypotheses lists
 
-                    if len(hypotheses[global_caption_idx]) == 0:
+                    if len(decoded_hypotheses[global_caption_idx]) == 0:
                         print(f'No caption for image {global_caption_idx}, skipping attention visualization')
                         break
 
-                    log_attention_visualization_plot(img_tensor, alphas, hypotheses, references, batch_idx, img_idx, global_caption_idx, encoder)
+                    log_attention_visualization_plot(img_tensor, alphas, decoded_hypotheses, decoded_captions, batch_idx, img_idx, global_caption_idx, encoder)
 
-        bleu_1 = corpus_bleu(references, hypotheses, weights=(1, 0, 0, 0))
-        bleu_2 = corpus_bleu(references, hypotheses, weights=(0.5, 0.5, 0, 0))
-        bleu_3 = corpus_bleu(references, hypotheses, weights=(0.33, 0.33, 0.33, 0))
-        bleu_4 = corpus_bleu(references, hypotheses)
+        bleu_1 = corpus_bleu(decoded_all_captions, decoded_hypotheses, weights=(1, 0, 0, 0))
+        bleu_2 = corpus_bleu(decoded_all_captions, decoded_hypotheses, weights=(0.5, 0.5, 0, 0))
+        bleu_3 = corpus_bleu(decoded_all_captions, decoded_hypotheses, weights=(0.33, 0.33, 0.33, 0))
+        bleu_4 = corpus_bleu(decoded_all_captions, decoded_hypotheses)
 
         wandb.log({
             f'{mode.value}_loss': losses.avg,
@@ -278,20 +286,20 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
         })
 
         print(f'{mode} Epoch: {epoch}\t'
-              'BLEU-1 ({bleu_1})\t'
-              'BLEU-2 ({bleu_2})\t'
-              'BLEU-3 ({bleu_3})\t'
-              'BLEU-4 ({bleu_4})\t')
+              f'BLEU-1 ({bleu_1})\t'
+              f'BLEU-2 ({bleu_2})\t'
+              f'BLEU-3 ({bleu_3})\t'
+              f'BLEU-4 ({bleu_4})\t')
 
 def validate(epoch, *args, **kwargs):
     print("Starting validation...")
-    return run_evaluation(epoch, *args, mode=EvaluationMode.VALIDATION, **kwargs)
+    return run_evaluation(epoch, *args, mode=EvalMode.VALIDATION, **kwargs)
 
 def test(epoch, *args, **kwargs):
     print("Starting test...")
-    return run_evaluation(epoch, *args, mode=EvaluationMode.TEST, **kwargs)
+    return run_evaluation(epoch, *args, mode=EvalMode.TEST, **kwargs)
 
-def log_attention_visualization_plot(img_tensor, alphas, hypotheses, references, batch_idx, img_idx, global_caption_idx, encoder):
+def log_attention_visualization_plot(img_tensor, alphas, decoded_hypotheses, decoded_captions, batch_idx, img_idx, global_caption_idx, encoder):
     # Move tensor to CPU and detach from the computation graph
     img_tensor = img_tensor.cpu().detach()
     alphas_tensor = alphas.cpu().detach()
@@ -308,9 +316,9 @@ def log_attention_visualization_plot(img_tensor, alphas, hypotheses, references,
     img_displayable = Image.fromarray(img_np)
 
     # Taking first reference and hypothesis captions
-    sentence_tokens = hypotheses[global_caption_idx]
-    hypothesis_caption = ' '.join(hypotheses[global_caption_idx])
-    reference_caption = ' '.join(references[global_caption_idx][0])
+    sentence_tokens = decoded_hypotheses[global_caption_idx]
+    hypothesis_caption = ' '.join(decoded_hypotheses[global_caption_idx])
+    reference_caption = ' '.join(decoded_captions[global_caption_idx])
 
     # Plot the attention map
     fig, axs = plt.subplots(1, len(sentence_tokens), figsize=(20, 10))

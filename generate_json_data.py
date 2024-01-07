@@ -71,9 +71,7 @@ def process_caption_tokens(caption_tokens, word_dict, max_length):
     captions = []
     for tokens in caption_tokens:
         token_idxs = [word_dict[token] if token in word_dict else word_dict['<unk>'] for token in tokens]
-        captions.append(
-            [word_dict['<start>']] + token_idxs + [word_dict['<eos>']] +
-            [word_dict['<pad>']] * (max_length - len(tokens)))
+        captions.append([word_dict['<start>']] + token_idxs + [word_dict['<eos>']] + [word_dict['<pad>']] * (max_length - len(tokens)))
 
     return captions
 
