@@ -7,6 +7,7 @@ def generate_json_data(split_path, data_path, max_captions_per_image):
 
     train_captions = []
     validation_captions = []
+    test_captions = []
 
     # Initialize BERT tokenizer
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -35,12 +36,16 @@ def generate_json_data(split_path, data_path, max_captions_per_image):
                 train_captions.append(padded_caption)
             elif img['split'] == 'val':
                 validation_captions.append(padded_caption)
+            elif img['split'] == 'test':
+                test_captions.append(padded_caption)
 
     # Save the processed data
     with open(data_path + '/train_captions_bert.json', 'w') as f:
         json.dump(train_captions, f)
     with open(data_path + '/val_captions_bert.json', 'w') as f:
         json.dump(validation_captions, f)
+    with open(data_path + '/test_captions_bert.json', 'w') as f:
+        json.dump(test_captions, f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate json caption files for BERT tokenization')
