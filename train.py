@@ -162,7 +162,9 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
     decoded_captions = [] # list of single assigned caption for each image
     decoded_all_captions = [] # list of list of all captions present in dataset for each image, thus captions may repeat in different lists
     decoded_hypotheses = [] # list of single predicted caption for each image
+    
     with torch.no_grad():
+        logged_attention_visualizations_count = 0
         for batch_idx, (imgs, captions, all_captions) in enumerate(data_loader):
             imgs, captions = Variable(imgs).to(mps_device), Variable(captions).to(mps_device)
             img_features = encoder(imgs)
@@ -233,9 +235,15 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
                 # Calculate the start index for the current batch
                 batch_start_idx = batch_idx * len(imgs)
 
-                # For the first image in the batch, log the attention visualization
+                # Log the attention visualizations
                 for img_idx, img_tensor in enumerate(imgs):
-                    global_caption_idx = batch_start_idx + img_idx  # Calculate the global index for global references and hypotheses lists
+                    # Skip attention visualization if already logged enough
+                    if logged_attention_visualizations_count >= 50:
+                        break
+                    logged_attention_visualizations_count += 1
+
+                    # Calculate the global index for decoded_hypotheses and decoded_captions lists
+                    global_caption_idx = batch_start_idx + img_idx
 
                     if len(decoded_hypotheses[global_caption_idx]) == 0:
                         print(f'No caption for image {global_caption_idx}, skipping attention visualization')
