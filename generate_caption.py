@@ -15,6 +15,7 @@ import torch
 import torchvision.transforms as transforms
 from math import ceil
 from PIL import Image
+import wandb
 
 from dataset import pil_loader
 from decoder import Decoder
@@ -98,11 +99,26 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Show, Attend and Tell Caption Generator')
     parser.add_argument('--img-path', type=str, help='path to image')
     parser.add_argument('--model', type=str, help='path to model parameters')
+    parser.add_argument('--wandb-run', type=str, help='wandb run path', default=None)
+    parser.add_argument('--wandb-model', type=str, help='wandb model path', default=None)
     args = parser.parse_args()
     
+    # Load model from wandb
+    if args.wandb_run is not None and args.wandb_model is not None:
+        wandb_run_id = args.wandb_run.split('/')[2]
+        wandb_model_config_name = args.wandb_model.split('/')[0] + '/model_config.json'
+        model_target_dir = f'model/cache_wandb/{wandb_run_id}/'
+        wandb_loaded_model = wandb.restore(name=args.wandb_model, run_path=args.wandb_run, root=model_target_dir)
+        wandb_loaded_model_config = wandb.restore(name=wandb_model_config_name, run_path=args.wandb_run, root=model_target_dir)
+
+        model_path = wandb_loaded_model.name
+        model_config_path = wandb_loaded_model_config.name
+    else:
+        model_path = args.model
+        model_config_path = os.path.join(os.path.dirname(model_path), 'model_config.json')
+
     # Load model config
-    model_dir = os.path.dirname(args.model)
-    with open(os.path.join(model_dir, 'model_config.json'), 'r') as f:
+    with open(model_config_path, 'r') as f:
         model_config = json.load(f)
 
     network = model_config['network']
@@ -121,8 +137,7 @@ if __name__ == "__main__":
 
     encoder = Encoder(network=network)
     decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert)
-
-    decoder.load_state_dict(torch.load(args.model))
+    decoder.load_state_dict(torch.load(model_path))
 
     encoder.eval()
     decoder.eval()

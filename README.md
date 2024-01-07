@@ -76,11 +76,11 @@ An example:
 python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --model model/model_vgg19_5.pth
 ```
 
-Working images:
+You also have the option to generate captions based on models saved on W&B:
 
-- data/flickr8k/imgs/667626_18933d713e.jpg
-- data/flickr8k/imgs/3718892835_a3e74a3417.jpg
-- data/flickr8k/imgs/44856031_0d82c2c7d1.jpg
+```bash
+python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --wandb-run yvokeller/show-attend-and-tell/0v6sxo6t --wandb-model model/model_vgg19_1.pth
+``````
 
 ## Captioned Examples
 
