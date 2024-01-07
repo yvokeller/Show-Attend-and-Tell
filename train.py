@@ -67,42 +67,17 @@ def main(args):
     scheduler = optim.lr_scheduler.StepLR(optimizer, args.step_size)
     cross_entropy_loss = nn.CrossEntropyLoss().to(mps_device)
 
-    # Load train data
     train_loader = DataLoader(
-        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert),
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='train'),
+        batch_size=args.batch_size, shuffle=True, num_workers=1)
+
+    val_loader = DataLoader(
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='val'),
         batch_size=args.batch_size, shuffle=True, num_workers=1)
     
-    # Load validation and test data
-    full_val_dataset = ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='val')
-    if args.perform_test == True:
-        test_fraction = 0.1
-
-        # Determine the sizes for split
-        val_size = int((1 - test_fraction) * len(full_val_dataset))
-        test_size = len(full_val_dataset) - val_size
-
-        # Split the full validation dataset into validation and test datasets
-        val_dataset, test_dataset = random_split(full_val_dataset, [val_size, test_size])
-
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
-        test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
-    else:
-        val_dataset = full_val_dataset
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
-
-    # Check for duplicates in full validation dataset
-    img_path_set = set()
-    for img_path in full_val_dataset.img_paths:
-        if img_path in img_path_set:
-            print(f"Duplicate found: {img_path}")
-        else:
-            img_path_set.add(img_path)
-
-    # Check for duplicates between validation and test splits
-    test_indices = set(test_dataset.indices)
-    val_indices = set(val_dataset.indices)
-    intersection = test_indices.intersection(val_indices)
-    assert len(intersection) == 0, "There are duplicated indices in test and validation datasets!"
+    test_loader = DataLoader(
+        ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='test'),
+        batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     print('Starting training with {}'.format(args))
     for epoch in range(1, args.epochs + 1):
@@ -275,10 +250,10 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
         bleu_4 = corpus_bleu(decoded_all_captions, decoded_hypotheses)
 
         wandb.log({
+            'epoch': epoch,
             f'{mode.value}_loss': losses.avg,
             f'{mode.value}_top1_acc': top1.avg,
             f'{mode.value}_top5_acc': top5.avg,
-            'epoch': epoch,
             f'{mode.value}_bleu1': bleu_1,
             f'{mode.value}_bleu2': bleu_2,
             f'{mode.value}_bleu3': bleu_3,
