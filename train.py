@@ -79,7 +79,7 @@ def main(args):
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='test'),
         batch_size=args.batch_size, shuffle=True, num_workers=1)
 
-    print('Starting training with {}'.format(args))
+    print(f'Starting training with {args}')
     for epoch in range(1, args.epochs + 1):
         train(epoch, encoder, decoder, optimizer, cross_entropy_loss,
               train_loader, word_dict, args.alpha_c, args.log_interval, bert=args.bert, tokenizer=bert_tokenizer)
@@ -140,11 +140,10 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         top5.update(acc5, total_caption_length)
 
         if batch_idx % log_interval == 0:
-            print('Train Batch: [{0}/{1}]\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})'.format(
-                batch_idx, len(data_loader), loss=losses, top1=top1, top5=top5))
+            print(f'Train Batch: [{batch_idx}/{len(data_loader)}]\t'
+                  f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
+                  f'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
+                  f'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})')
 
         wandb.log({'train_loss': losses.avg, 'train_top1_acc': top1.avg, 'train_top5_acc': top5.avg, 'epoch': epoch})
 
