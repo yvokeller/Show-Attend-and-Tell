@@ -104,4 +104,4 @@ python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg -
 
 [Neural Machine Translation By Jointly Learning to Align And Translate](https://arxiv.org/pdf/1409.0473.pdf)
 
-[Karpathy's Data splits](https://cs.stanford.edu/people/karpathy/deepimagesent/)
+[Karpathys Data splits](https://cs.stanford.edu/people/karpathy/deepimagesent/)
