@@ -56,7 +56,7 @@ def main(args):
         vocabulary_size = len(word_dict)
 
     encoder = Encoder(args.network)
-    decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado, bert=args.bert)
+    decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado, bert=args.bert, attention=args.attention)
 
     if args.model:
         decoder.load_state_dict(torch.load(args.model))
@@ -105,6 +105,8 @@ def main(args):
 
 
 def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None):
+    print(f"Epoch {epoch} - Starting train")
+
     encoder.eval()
     decoder.train()
 
@@ -274,11 +276,11 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
               f'BLEU-4 ({bleu_4})\t')
 
 def validate(epoch, *args, **kwargs):
-    print("Starting validation...")
+    print(f"Epoch {epoch} - Starting validation")
     return run_evaluation(epoch, *args, mode=EvalMode.VALIDATION, **kwargs)
 
 def test(epoch, *args, **kwargs):
-    print("Starting test...")
+    print(f"Epoch {epoch} - Starting test")
     return run_evaluation(epoch, *args, mode=EvalMode.TEST, **kwargs)
 
 def log_attention_visualization_plot(img_tensor, alphas, decoded_hypotheses, decoded_captions, batch_idx, img_idx, global_caption_idx, encoder):
@@ -364,5 +366,7 @@ if __name__ == "__main__":
                         help='fraction of dataset to use (default: 1.0)')
     parser.add_argument('--bert', action='store_true', default=False,
                         help='use bert for word embeddings (default: False)')
+    parser.add_argument('--attention', action='store_true', default=False,
+                        help='use attention (default: False)')
 
     main(parser.parse_args())

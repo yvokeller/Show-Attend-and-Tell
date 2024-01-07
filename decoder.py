@@ -7,11 +7,12 @@ if torch.backends.mps.is_available():
 
 
 class Decoder(nn.Module):
-    def __init__(self, vocabulary_size, encoder_dim, tf=False, ado=False, bert=False):
+    def __init__(self, vocabulary_size, encoder_dim, tf=False, ado=False, bert=False, attention=False):
         super(Decoder, self).__init__()
         self.use_tf = tf
         self.use_advanced_deep_output = ado
         self.use_bert = bert
+        self.use_attention = attention
 
         # Initializing parameters
         self.encoder_dim = encoder_dim
@@ -91,9 +92,15 @@ class Decoder(nn.Module):
 
         # Generating captions
         for t in range(max_timespan):
-            context, alpha = self.attention(img_features, h)  # Compute context vector via attention
-            gate = self.sigmoid(self.f_beta(h))  # Gating scalar for context
-            gated_context = gate * context  # Apply gate to context
+            if self.use_attention:
+                context, alpha = self.attention(img_features, h)  # Compute context vector via attention
+                gate = self.sigmoid(self.f_beta(h))  # Gating scalar for context
+                gated_context = gate * context  # Apply gate to context
+            else:
+                # If not using attention, treat all parts of the image equally
+                alpha = torch.full((batch_size, img_features.size(1)), 1.0 / img_features.size(1), device=mps_device)  # Uniform attention
+                context = img_features.mean(dim=1)  # Simply take the mean of the image features
+                gated_context = context  # No gating applied
 
             # Prepare LSTM input
             if self.use_tf:
@@ -107,7 +114,7 @@ class Decoder(nn.Module):
 
             # Generate word prediction
             if self.use_advanced_deep_output:
-                # TODO: explore alternative positions for dropout
+                # NOTE: could explore alternative positions for dropout
                 if self.use_tf:
                     output = self.advanced_deep_output(self.dropout(h), context, caption_embedding[:, t])
                 else:

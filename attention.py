@@ -19,13 +19,4 @@ class Attention(nn.Module):
         alpha = self.softmax(e)
         context = (img_features * alpha.unsqueeze(2)).sum(1)
         return context, alpha
-
-class MeanContext(nn.Module):
-    def __init__(self, encoder_dim, embedding_size):
-        super(MeanContext, self).__init__()
-
-    def forward(self, img_features, hidden_state):
-        # Take the mean of num_features across img_features (batch_size, num_features, feature_dim)
-        context = img_features.mean(dim=1)
-        alpha = None
-        return context, alpha
+    

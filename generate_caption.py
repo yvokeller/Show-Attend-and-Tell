@@ -125,6 +125,7 @@ if __name__ == "__main__":
     data_path = model_config['data']
     ado = model_config['ado']
     bert = model_config['bert']
+    attention = model_config['attention']
 
     if bert == True:
         from transformers import BertTokenizer, BertModel 
@@ -136,7 +137,7 @@ if __name__ == "__main__":
         vocabulary_size = len(word_dict)
 
     encoder = Encoder(network=network)
-    decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert)
+    decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert, attention=attention)
     decoder.load_state_dict(torch.load(model_path))
 
     encoder.eval()

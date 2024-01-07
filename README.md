@@ -55,7 +55,7 @@ python train.py --data=data/flickr8k
 or to make a small test run:
 
 ```bash
-python train.py --data=data/flickr8k --tf --ado --epochs=1 --frac=0.02 --log-interval=2
+python train.py --data=data/flickr8k --tf --ado --attention --epochs=1 --frac=0.02 --log-interval=2
 ```
 
 The models will be saved in `model/` and the training statistics are uploaded to your W&B account.
