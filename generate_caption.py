@@ -38,7 +38,7 @@ def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_s
 
     if bert == True:
         # Decoding with BERT tokenizer
-        sentence_tokens = tokenizer.decode(sentence, skip_special_tokens=True).split()
+        sentence_tokens = tokenizer.decode(sentence, skip_special_tokens=False).split()
     else:
         # Decoding with custom word dictionary
         token_dict = {idx: word for word, idx in word_dict.items()}
