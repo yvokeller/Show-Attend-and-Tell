@@ -179,9 +179,17 @@ class Decoder(nn.Module):
 
         while True:
             embedding = self.embedding(prev_words).squeeze(1)
-            context, alpha = self.attention(img_features, h)
-            gate = self.sigmoid(self.f_beta(h))
-            gated_context = gate * context
+
+            if self.use_attention:
+                context, alpha = self.attention(img_features, h)  # Compute context vector via attention
+                gate = self.sigmoid(self.f_beta(h))  # Gating scalar for context
+                gated_context = gate * context  # Apply gate to context
+            else:
+                # If not using attention, treat all parts of the image equally
+                batch_size = img_features.shape[0]
+                alpha = torch.full((batch_size, img_features.size(1)), 1.0 / img_features.size(1))  # Uniform attention
+                context = img_features.mean(dim=1)  # Simply take the mean of the image features
+                gated_context = context  # No gating applied
 
             lstm_input = torch.cat((embedding, gated_context), dim=1)
             h, c = self.lstm(lstm_input, (h, c))
