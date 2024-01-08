@@ -104,7 +104,7 @@ class Decoder(nn.Module):
 
             # Prepare LSTM input
             if self.use_tf:
-                lstm_input = torch.cat((caption_embedding[:, t], gated_context), dim=1)
+                lstm_input = torch.cat((caption_embedding[:, t], gated_context), dim=1)  # current embedding + context vector as input vector
             else:
                 previous_predicted_token_embedding = previous_predicted_token_embedding.squeeze(1) if previous_predicted_token_embedding.dim() == 3 else previous_predicted_token_embedding # TODO: What is the optional squeeze for?
                 lstm_input = torch.cat((previous_predicted_token_embedding, gated_context), dim=1)
@@ -126,7 +126,7 @@ class Decoder(nn.Module):
             alphas[:, t] = alpha  # Store attention weights
 
             # Prepare next input word
-            if not self.use_tf: # TODO: my understanding is this needs to be done for training with tf too??? -> WRONG, because for tf we already have the whole caption and don't want to overwrite with the predicted word
+            if not self.use_tf: # NOTE: my understanding was this needs to be done for training with tf too? -> WRONG, because for tf we already have the whole caption and don't want to overwrite with the predicted word
                 predicted_token_idxs = output.max(1)[1].reshape(batch_size, 1) # output.max(1)[1] = extract the index: [1] of the token with the highest probability: max(1)
                 previous_predicted_token_embedding = self.embedding(predicted_token_idxs)
 

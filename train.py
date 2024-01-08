@@ -18,7 +18,7 @@ import skimage.transform
 from dataset import ImageCaptionDataset
 from decoder import Decoder
 from encoder import Encoder
-from utils import AverageMeter, accuracy, calculate_caption_lengths, calculate_caption_lengths_bert
+from utils import AverageMeter, sequence_accuracy, calculate_caption_lengths, calculate_caption_lengths_bert
 
 import wandb
 
@@ -114,20 +114,29 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
     top1 = AverageMeter()
     top5 = AverageMeter()
     for batch_idx, (imgs, captions) in enumerate(data_loader):
+        # TODO: Lots of shared code with run_evaluation(), refactor?
         imgs, captions = Variable(imgs).to(mps_device), Variable(captions).to(mps_device)
 
         img_features = encoder(imgs)
         optimizer.zero_grad()
         preds, alphas = decoder(img_features, captions)
-        targets = captions[:, 1:]
+        targets = captions[:, 1:] # skip <start> token for loss calculation
 
-        targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
-        preds = pack_padded_sequence(preds, [len(pred) - 1 for pred in preds], batch_first=True)[0]
+        # Calculate accuracy
+        padding_idx = word_dict['<pad>'] if bert == False else tokenizer.pad_token_id
+        acc1 = sequence_accuracy(preds, targets, 1, ignore_index=padding_idx)
+        acc5 = sequence_accuracy(preds, targets, 5, ignore_index=padding_idx)
 
+        # Calculate loss
+        # remove paddings to avoid calculating loss on them - pack_padded_sequence() takes (data, lengths) as input, -1 because we skip <start> token
+        packed_targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
+        packed_preds = pack_padded_sequence(preds, [len(pred) - 1 for pred in preds], batch_first=True)[0]
+
+        # encourage total attention (alphas) to be close to 1, thus penalize when sum is far from 1
         att_regularization = alpha_c * ((1 - alphas.sum(1)) ** 2).mean()
 
-        loss = cross_entropy_loss(preds, targets)
-        loss += att_regularization
+        loss = cross_entropy_loss(packed_preds, packed_targets)
+        loss += att_regularization # pytorch autograd will calculate gradients for both loss and att_regularization
         loss.backward()
         optimizer.step()
 
@@ -135,8 +144,7 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
             total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
         else:
             total_caption_length = calculate_caption_lengths(captions, word_dict)
-        acc1 = accuracy(preds, targets, 1)
-        acc5 = accuracy(preds, targets, 5)
+
         losses.update(loss.item(), total_caption_length)
         top1.update(acc1, total_caption_length)
         top5.update(acc5, total_caption_length)
@@ -147,7 +155,10 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
                   f'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
                   f'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})')
 
-        wandb.log({'train_loss': losses.avg, 'train_top1_acc': top1.avg, 'train_top5_acc': top5.avg, 'epoch': epoch})
+        wandb.log({
+            'train_loss': losses.avg, 'train_top1_acc': top1.avg, 'train_top5_acc': top5.avg, 'epoch': epoch,
+            'train_loss_raw': losses.val, 'train_top1_acc_raw': top1.val, 'train_top5_acc_raw': top5.val
+        })
 
 class EvalMode(Enum):
     VALIDATION = 'val'
@@ -173,12 +184,18 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             preds, alphas = decoder(img_features, captions)
             targets = captions[:, 1:]
 
-            targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
+            # Calculate accuracy
+            padding_idx = word_dict['<pad>'] if bert == False else tokenizer.pad_token_id
+            acc1 = sequence_accuracy(preds, targets, 1, ignore_index=padding_idx)
+            acc5 = sequence_accuracy(preds, targets, 5, ignore_index=padding_idx)
+
+            # Calculate loss
+            packed_targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
             packed_preds = pack_padded_sequence(preds, [len(pred) - 1 for pred in preds], batch_first=True)[0]
 
             att_regularization = alpha_c * ((1 - alphas.sum(1)) ** 2).mean()
 
-            loss = cross_entropy_loss(packed_preds, targets)
+            loss = cross_entropy_loss(packed_preds, packed_targets)
             loss += att_regularization
 
             if bert == True:
@@ -186,16 +203,23 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             else:
                 total_caption_length = calculate_caption_lengths(captions, word_dict)
                 
-            acc1 = accuracy(packed_preds, targets, 1)
-            acc5 = accuracy(packed_preds, targets, 5)
             losses.update(loss.item(), total_caption_length)
             top1.update(acc1, total_caption_length)
             top5.update(acc5, total_caption_length)
 
             if bert == True:
                 def bert_decode_caption(caption):
-                    # Decode predicted sequence to text and split into words
-                    return tokenizer.decode(caption, skip_special_tokens=True).split()
+                    # NOTE: Trying new logic with stopping at <eos> token (relevant for BLEU score to represent later real world usage?)
+                    tokens = tokenizer.convert_ids_to_tokens(caption)
+                    sentence = []
+                    for token in tokens:
+                        if token == "[SEP]":
+                            break
+                        if token not in ("[CLS]", "[PAD]"):
+                            sentence.append(token)
+
+                    return tokenizer.convert_tokens_to_string(sentence)
+                    # return tokenizer.decode(caption, skip_special_tokens=True).split()  # TODO: maybe should keep <END> token?
                 
                 for caption in captions.tolist():
                     decoded_captions.append(bert_decode_caption(caption))
@@ -212,7 +236,15 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             else:
                 token_dict = {idx: word for word, idx in word_dict.items()}
                 def vanilla_decode_caption(caption):
-                    return [token_dict[word_idx] for word_idx in caption if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
+                    # TODO: Trying new logic with stopping at <eos> token (relevant for BLEU score to represent later real world usage?)
+                    sentence = []
+                    for word_idx in caption:
+                        if word_idx == word_dict['<eos>']:
+                            break # Stop when EOS token is found
+                        if word_idx not in (word_dict['<start>'], word_dict['<pad>']):
+                            sentence.append(token_dict[word_idx])
+                    return sentence
+                    # return [token_dict[word_idx] for word_idx in caption if word_idx != word_dict['<start>'] and word_idx != word_dict['<pad>']]
 
                 for caption in captions.tolist():
                     decoded_captions.append(vanilla_decode_caption(caption))
@@ -260,13 +292,9 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
 
         wandb.log({
             'epoch': epoch,
-            f'{mode.value}_loss': losses.avg,
-            f'{mode.value}_top1_acc': top1.avg,
-            f'{mode.value}_top5_acc': top5.avg,
-            f'{mode.value}_bleu1': bleu_1,
-            f'{mode.value}_bleu2': bleu_2,
-            f'{mode.value}_bleu3': bleu_3,
-            f'{mode.value}_bleu4': bleu_4
+            f'{mode.value}_loss': losses.avg, f'{mode.value}_top1_acc': top1.avg, f'{mode.value}_top5_acc': top5.avg,
+            f'{mode.value}_loss_raw': losses.val, f'{mode.value}_top1_acc_raw': top1.val, f'{mode.value}_top5_acc_raw': top5.val,
+            f'{mode.value}_bleu1': bleu_1, f'{mode.value}_bleu2': bleu_2, f'{mode.value}_bleu3': bleu_3, f'{mode.value}_bleu4': bleu_4,
         })
 
         print(f'{mode} Epoch: {epoch}\t'
