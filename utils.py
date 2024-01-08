@@ -20,9 +20,21 @@ class AverageMeter(object):
 
 
 def accuracy(preds, targets, k):
-    # Fundamentally flawed! It counts 0 matches (padding tokens) as correct
-    # and the packed sequences were previously passed, leading to batch_size 
-    # just being the total packed sequence length for the batch.
+    # Flaws in this function:
+    # 1. Padding Token Handling: This function does not account for padding tokens. If the dataset 
+    #    contains padded sequences, this function may count predictions of padding tokens (often 0) 
+    #    as correct, artificially inflating the accuracy. Accurate accuracy measurement requires 
+    #    masking out these padding tokens.
+    #
+    # 2. Top-k Accuracy for k > 1: The function is not correctly set up to handle top-k accuracy 
+    #    for k > 1. It assumes that the correct prediction must be in the first position of the top-k 
+    #    predictions (pred). For k > 1, the function should check if the correct prediction is 
+    #    anywhere within the top k predictions for each position in the sequence.
+    #
+    # 3. Batch Size Misinterpretation: If packed sequences were previously passed to this function,
+    #    'batch_size' would incorrectly represent the total length of the packed sequences in the batch,
+    #    not the actual number of sequences (images) in the batch. This misinterpretation leads to 
+    #    incorrect normalization of the accuracy score.
     batch_size = targets.size(0)
     _, pred = preds.topk(k, 1, True, True)
     correct = pred.eq(targets.view(-1, 1).expand_as(pred))
