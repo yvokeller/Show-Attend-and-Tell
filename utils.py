@@ -41,7 +41,7 @@ def accuracy(preds, targets, k):
     correct_total = correct.view(-1).float().sum()
     return correct_total.item() * (100.0 / batch_size)
 
-def sequence_accuracy(preds, targets, k, ignore_index=0):
+def sequence_accuracy(preds, targets, k, ignore_index=0, tokenizer=None):
     """
     Calculates the sequence accuracy at k, considering only non-padding tokens.
     
@@ -69,12 +69,34 @@ def sequence_accuracy(preds, targets, k, ignore_index=0):
     
     # Sum the correct predictions
     correct_total = correct_any_k.float().sum()
+
+    # NOTE: for debugging
+    # extract_and_print_correct_tokens(correct_any_k, targets, tokenizer=tokenizer)
     
     # Calculate the total number of non-padding tokens
     total_non_padding = mask.sum()
     
     # Return accuracy as a percentage
     return (correct_total.item() * 100.0 / total_non_padding.item()) if total_non_padding.item() > 0 else 0
+
+def extract_and_print_correct_tokens(correct_any_k, targets, tokenizer=None):
+    # Extracting and printing correctly predicted tokens
+        batch_size, seq_length = targets.size()
+        correct_tokens = []
+        target_sentences = []
+
+        for i in range(batch_size):
+            # Convert entire target sequence to tokens and filter out special tokens
+            target_sentence_tokens = [token for token in tokenizer.convert_ids_to_tokens(targets[i].tolist()) if token not in ['[PAD]']]
+            target_sentences.append(' '.join(target_sentence_tokens))
+
+            # Extract and filter out special tokens from correctly predicted tokens
+            correct_indices = correct_any_k[i].nonzero(as_tuple=False).view(-1)
+            correct_batch_tokens = [token for token in tokenizer.convert_ids_to_tokens(targets[i][correct_indices].tolist()) if token not in ['[PAD]']]
+            correct_tokens.append(correct_batch_tokens)
+
+            # Print in a single line
+            print(f"Sample {i} - Correct Tokens: {correct_batch_tokens}, Full Sentence: {' '.join(target_sentence_tokens)}")
 
 def calculate_caption_lengths(captions, word_dict):
     lengths = 0

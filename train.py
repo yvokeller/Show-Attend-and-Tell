@@ -51,6 +51,8 @@ def main(args):
         bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         bert_model = BertModel.from_pretrained('bert-base-uncased')
         vocabulary_size = bert_model.config.vocab_size
+        bert_tokenizer.bos_token = bert_tokenizer.cls_token
+        bert_tokenizer.eos_token = bert_tokenizer.sep_token
     else:
         word_dict = json.load(open(args.data + '/word_dict.json', 'r'))
         vocabulary_size = len(word_dict)
@@ -124,11 +126,12 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
 
         # Calculate accuracy
         padding_idx = word_dict['<pad>'] if bert == False else tokenizer.pad_token_id
-        acc1 = sequence_accuracy(preds, targets, 1, ignore_index=padding_idx)
-        acc5 = sequence_accuracy(preds, targets, 5, ignore_index=padding_idx)
+        acc1 = sequence_accuracy(preds, targets, 1, ignore_index=padding_idx, tokenizer=tokenizer)
+        acc5 = sequence_accuracy(preds, targets, 5, ignore_index=padding_idx, tokenizer=tokenizer)
 
         # Calculate loss
         # remove paddings to avoid calculating loss on them - pack_padded_sequence() takes (data, lengths) as input, -1 because we skip <start> token
+        # TODO: Currently PAD tokens are NOT removed from the loss calculation, but they are from the accuracy calculation
         packed_targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
         packed_preds = pack_padded_sequence(preds, [len(pred) - 1 for pred in preds], batch_first=True)[0]
 
@@ -186,8 +189,8 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
 
             # Calculate accuracy
             padding_idx = word_dict['<pad>'] if bert == False else tokenizer.pad_token_id
-            acc1 = sequence_accuracy(preds, targets, 1, ignore_index=padding_idx)
-            acc5 = sequence_accuracy(preds, targets, 5, ignore_index=padding_idx)
+            acc1 = sequence_accuracy(preds, targets, 1, ignore_index=padding_idx, tokenizer=tokenizer)
+            acc5 = sequence_accuracy(preds, targets, 5, ignore_index=padding_idx, tokenizer=tokenizer)
 
             # Calculate loss
             packed_targets = pack_padded_sequence(targets, [len(tar) - 1 for tar in targets], batch_first=True)[0]
