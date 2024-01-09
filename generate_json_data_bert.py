@@ -33,12 +33,18 @@ def generate_json_data(split_path, data_path, max_captions_per_image, max_captio
                 break
 
             # Truncate captions that are longer than max_length
-            tokens = sentence['tokens'][:max_length]
+            tokens = sentence['tokens']
 
             # Tokenize each caption with BERT's tokenizer
-            encoded_caption = tokenizer.encode(tokens, add_special_tokens=True)
+            raw_sentence = ' '.join(tokens)
+            encoded_caption = tokenizer.encode(raw_sentence, add_special_tokens=False)
+            encoded_caption = encoded_caption[:max_length]
+
             # Pad the caption to max_length
             padded_caption = encoded_caption + [tokenizer.pad_token_id] * (max_length - len(encoded_caption))
+            
+            # Add special tokens
+            padded_caption = [tokenizer.cls_token_id] + padded_caption + [tokenizer.sep_token_id]
 
             if img['split'] == 'train':
                 train_captions.append(padded_caption)
@@ -60,7 +66,7 @@ if __name__ == "__main__":
     parser.add_argument('--split-path', type=str, default='data/coco/dataset.json')
     parser.add_argument('--data-path', type=str, default='data/coco')
     parser.add_argument('--max-captions', type=int, default=5, help='maximum number of captions per image')
-    parser.add_argument('--max-caption-length', type=int, default=25, help='maximum number of tokens in a caption')
+    parser.add_argument('--max-caption-length', type=int, default=30, help='maximum number of tokens in a caption')
     args = parser.parse_args()
 
     generate_json_data(args.split_path, args.data_path, args.max_captions, args.max_caption_length)

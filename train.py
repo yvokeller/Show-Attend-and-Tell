@@ -2,6 +2,7 @@ import argparse, json
 from enum import Enum
 import os
 import random
+import time
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
@@ -70,9 +71,12 @@ def main(args):
     scheduler = optim.lr_scheduler.StepLR(optimizer, args.step_size)
     cross_entropy_loss = nn.CrossEntropyLoss().to(mps_device)
 
+    start_time = time.time()
     train_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='train'),
         batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
+    end_time = time.time()
+    print(f"Time to load train dataset: {end_time - start_time} seconds")
 
     val_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='val'),
@@ -120,7 +124,7 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-    for batch_idx, (imgs, captions) in enumerate(data_loader):
+    for batch_idx, (imgs, captions, _) in enumerate(data_loader):
         # TODO: Lots of shared code with run_evaluation(), refactor?
         imgs, captions = Variable(imgs).to(mps_device), Variable(captions).to(mps_device)
 
@@ -252,7 +256,7 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
                         if token not in ("[CLS]", "[PAD]"):
                             sentence.append(token)
 
-                    return tokenizer.convert_tokens_to_string(sentence)
+                    return tokenizer.convert_tokens_to_string(sentence).split()
                     # return tokenizer.decode(caption, skip_special_tokens=True).split()
                 
                 for caption in captions.tolist():

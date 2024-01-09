@@ -1,8 +1,9 @@
-import json, os
+import json
 import torch
-from collections import Counter
-from PIL import Image
 from torch.utils.data import Dataset
+from collections import defaultdict
+from PIL import Image
+import json
 
 
 def pil_loader(path):
@@ -14,32 +15,38 @@ def pil_loader(path):
 class ImageCaptionDataset(Dataset):
     def __init__(self, transform, data_path, split_type='train', fraction=1.0, bert=False):
         super(ImageCaptionDataset, self).__init__()
-        self.split_type = split_type
         self.transform = transform
-        self.img_paths = json.load(open(data_path + f'/{split_type}_img_paths.json', 'r'))
-
-        if bert==True:
-            self.captions = json.load(open(data_path + f'/{split_type}_captions_bert.json', 'r'))
+        
+        # Load image paths and captions
+        img_paths = json.load(open(data_path + f'/{split_type}_img_paths.json', 'r'))
+        if bert:
+            captions = json.load(open(data_path + f'/{split_type}_captions_bert.json', 'r'))
         else:
-            self.captions = json.load(open(data_path + f'/{split_type}_captions.json', 'r'))
+            captions = json.load(open(data_path + f'/{split_type}_captions.json', 'r'))
 
-        # reduced dataset by fraction (for debugging)
+        # Reduce dataset size if fraction is not 1.0
         if fraction != 1.0:
-            self.img_paths = self.img_paths[:int(len(self.img_paths) * fraction)]
-            self.captions = self.captions[:int(len(self.captions) * fraction)]
+            img_paths = img_paths[:int(len(img_paths) * fraction)]
+            captions = captions[:int(len(captions) * fraction)]
+
+        # Preprocess and store data
+        self.data = []
+        all_captions = defaultdict(list)  # Store all captions for each image path
+
+        for img_path, caption in zip(img_paths, captions):
+            img = pil_loader(img_path)
+            if self.transform is not None:
+                img = self.transform(img)
+            self.data.append((torch.FloatTensor(img), torch.tensor(caption)))
+            all_captions[img_path].append(caption)
+
+        # Convert all_captions dictionary to a list matching the order of images
+        self.all_captions = [all_captions[path] for path in img_paths]
 
     def __getitem__(self, index):
-        img_path = self.img_paths[index]
-        img = pil_loader(img_path)
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.split_type == 'train':
-            return torch.FloatTensor(img), torch.tensor(self.captions[index])
-
-        matching_idxs = [idx for idx, path in enumerate(self.img_paths) if path == img_path]
-        all_captions = [self.captions[idx] for idx in matching_idxs]
-        return torch.FloatTensor(img), torch.tensor(self.captions[index]), torch.tensor(all_captions)
+        img_tensor, caption_tensor = self.data[index]
+        all_captions_tensor = torch.tensor(self.all_captions[index])
+        return img_tensor, caption_tensor, all_captions_tensor
 
     def __len__(self):
-        return len(self.captions)
+        return len(self.data)

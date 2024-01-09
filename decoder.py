@@ -31,6 +31,9 @@ class Decoder(nn.Module):
             # Freeze the BERT embeddings
             for param in self.embedding.parameters():
                 param.requires_grad = False
+
+            # Delete the BERT model to save memory (and checkpoint size)
+            del self.bert_model
         else:
             self.vocabulary_size = vocabulary_size
             self.embedding_size = 512
