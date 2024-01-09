@@ -26,6 +26,10 @@ class Encoder(nn.Module):
             self.net = nn.Sequential(*list(self.net.features.children())[:-1])
             self.dim = 512  # Dimension of feature vectors for VGG19
 
+            # Freezing the weights of the pre-trained CNN
+            for params in self.net.parameters():
+                params.requires_grad = False
+
     def forward(self, x):
         x = self.net(x)
         # These steps correspond to the extraction of annotation vectors (a = {a1,...,aL}) as described in Section 3.1.1 of the paper.
