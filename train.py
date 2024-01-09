@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from nltk.translate.bleu_score import corpus_bleu
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -82,9 +82,13 @@ def main(args):
         batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     print(f'Starting training with {args}')
+    print("Encoder parameters:")
+    count_parameters(encoder)
+    print("Decoder parameters:")
+    count_parameters(decoder)
     for epoch in range(1, args.epochs + 1):
         train(epoch, encoder, decoder, optimizer, cross_entropy_loss,
-              train_loader, word_dict, args.alpha_c, args.log_interval, bert=args.bert, tokenizer=bert_tokenizer)
+              train_loader, word_dict, args.alpha_c, args.log_interval, bert=args.bert, tokenizer=bert_tokenizer, args=args)
         validate(epoch, encoder, decoder, cross_entropy_loss, val_loader,
                  word_dict, args.alpha_c, args.log_interval, bert=args.bert, tokenizer=bert_tokenizer)
         scheduler.step()
@@ -106,14 +110,11 @@ def main(args):
     wandb.finish()
 
 
-def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None):
+def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, word_dict, alpha_c, log_interval, bert=False, tokenizer=None, args={}):
     print(f"Epoch {epoch} - Starting train")
 
     encoder.eval()
     decoder.train()
-
-    count_parameters(encoder)
-    count_parameters(decoder)
 
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -126,6 +127,11 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         optimizer.zero_grad()
         preds, alphas = decoder(img_features, captions)
         targets = captions[:, 1:] # skip <start> token for loss calculation
+
+        # NOTE: for debugging
+        # Assuming preds is a PyTorch tensor
+        # if batch_idx == 0:
+        #    torch.save(preds, f'preds_scenario1_epoch{epoch}.pt')
 
         # Calculate accuracy
         padding_idx = word_dict['<pad>'] if bert == False else tokenizer.pad_token_id
@@ -150,6 +156,14 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         loss += att_regularization # pytorch autograd will calculate gradients for both loss and att_regularization
         loss.backward()
         optimizer.step()
+
+        # NOTE: for debugging
+        # Check if the gradients of the attention layer are None
+        # if not args.attention:
+        # for name, param in decoder.named_parameters():
+        #    if 'attention' in name:
+        #        if param.grad is not None:
+        #            print(f"Gradients for {name} were computed.")
 
         if bert == True:
             total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
@@ -187,6 +201,8 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
     decoded_all_captions = [] # list of list of all captions present in dataset for each image, thus captions may repeat in different lists
     decoded_hypotheses = [] # list of single predicted caption for each image
     
+    predictions_table = wandb.Table(columns=["epoch", "mode", "target_caption", "pred_caption"])
+
     with torch.no_grad():
         logged_attention_visualizations_count = 0
         for batch_idx, (imgs, captions, all_captions) in enumerate(data_loader):
@@ -209,6 +225,7 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             loss = cross_entropy_loss(packed_preds, packed_targets)
             loss += att_regularization
 
+            # NOTE: unused for now
             # add repetition penalty to loss
             # start_idx = word_dict['<start>'] if bert == False else tokenizer.cls_token_id
             # rep_penalty = repetition_penalty(preds, [padding_idx, start_idx], beta=1.0)
@@ -280,6 +297,9 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
                     f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
                     f'Top 1 Accuracy {top1.val:.3f} ({top1.avg:.3f})\t'
                     f'Top 5 Accuracy {top5.val:.3f} ({top5.avg:.3f})')
+
+            # In each batch, log the first image's predictions to W&B table
+            predictions_table.add_data(epoch, mode.value, ' '.join(decoded_captions[-1]), ' '.join(decoded_hypotheses[-1]))
             
             if mode == EvalMode.TEST:
                 # Calculate the start index for the current batch
@@ -308,6 +328,7 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
 
         wandb.log({
             'epoch': epoch,
+            f'{epoch}_{mode.value}_caption_predictions': predictions_table,
             f'{mode.value}_loss': losses.avg, f'{mode.value}_top1_acc': top1.avg, f'{mode.value}_top5_acc': top5.avg,
             f'{mode.value}_loss_raw': losses.val, f'{mode.value}_top1_acc_raw': top1.val, f'{mode.value}_top5_acc_raw': top5.val,
             f'{mode.value}_bleu1': bleu_1, f'{mode.value}_bleu2': bleu_2, f'{mode.value}_bleu3': bleu_3, f'{mode.value}_bleu4': bleu_4,
