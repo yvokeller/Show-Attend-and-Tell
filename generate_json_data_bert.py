@@ -18,10 +18,11 @@ def generate_json_data(split_path, data_path, max_captions_per_image, max_captio
     max_length = 0
     for img in split['images']:
         for sentence in img['sentences']:
-            encoded_caption = tokenizer.encode(sentence['raw'], add_special_tokens=True)
+            encoded_caption = tokenizer.encode(sentence['tokens'], add_special_tokens=True)
             max_length = max(max_length, len(encoded_caption))
 
     max_length = min(max_length, max_caption_length)
+    print(f"Maximum caption length: {max_length}")
 
     for img in split['images']:
         caption_count = 0
@@ -32,10 +33,10 @@ def generate_json_data(split_path, data_path, max_captions_per_image, max_captio
                 break
 
             # Truncate captions that are longer than max_length
-            sentence['raw'] = sentence['raw'][:max_length]
+            tokens = sentence['tokens'][:max_length]
 
             # Tokenize each caption with BERT's tokenizer
-            encoded_caption = tokenizer.encode(sentence['raw'], add_special_tokens=True)
+            encoded_caption = tokenizer.encode(tokens, add_special_tokens=True)
             # Pad the caption to max_length
             padded_caption = encoded_caption + [tokenizer.pad_token_id] * (max_length - len(encoded_caption))
 
