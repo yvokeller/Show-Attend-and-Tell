@@ -2,7 +2,7 @@ import argparse
 import json
 from transformers import BertTokenizer
 
-def generate_json_data(split_path, data_path, max_captions_per_image):
+def generate_json_data(split_path, data_path, max_captions_per_image, max_caption_length):
     split = json.load(open(split_path, 'r'))
 
     train_captions = []
@@ -11,6 +11,8 @@ def generate_json_data(split_path, data_path, max_captions_per_image):
 
     # Initialize BERT tokenizer
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer.bos_token = tokenizer.cls_token
+    tokenizer.eos_token = tokenizer.sep_token
 
     # Determine the maximum length of captions
     max_length = 0
@@ -19,6 +21,8 @@ def generate_json_data(split_path, data_path, max_captions_per_image):
             encoded_caption = tokenizer.encode(sentence['raw'], add_special_tokens=True)
             max_length = max(max_length, len(encoded_caption))
 
+    max_length = min(max_length, max_caption_length)
+
     for img in split['images']:
         caption_count = 0
         for sentence in img['sentences']:
@@ -26,6 +30,9 @@ def generate_json_data(split_path, data_path, max_captions_per_image):
                 caption_count += 1
             else:
                 break
+
+            # Truncate captions that are longer than max_length
+            sentence['raw'] = sentence['raw'][:max_length]
 
             # Tokenize each caption with BERT's tokenizer
             encoded_caption = tokenizer.encode(sentence['raw'], add_special_tokens=True)
@@ -52,6 +59,7 @@ if __name__ == "__main__":
     parser.add_argument('--split-path', type=str, default='data/coco/dataset.json')
     parser.add_argument('--data-path', type=str, default='data/coco')
     parser.add_argument('--max-captions', type=int, default=5, help='maximum number of captions per image')
+    parser.add_argument('--max-caption-length', type=int, default=25, help='maximum number of tokens in a caption')
     args = parser.parse_args()
 
-    generate_json_data(args.split_path, args.data_path, args.max_captions)
+    generate_json_data(args.split_path, args.data_path, args.max_captions, args.max_caption_length)

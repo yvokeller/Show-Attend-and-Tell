@@ -2,7 +2,7 @@ import argparse, json
 from collections import Counter
 
 
-def generate_json_data(split_path, data_path, max_captions_per_image, min_word_count):
+def generate_json_data(split_path, data_path, max_captions_per_image, min_word_count, max_caption_length):
     split = json.load(open(split_path, 'r'))
     word_count = Counter()
 
@@ -50,6 +50,7 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
     with open(data_path + '/word_dict.json', 'w') as f:
         json.dump(word_dict, f)
 
+    max_length = min(max_length, max_caption_length)
     train_captions = process_caption_tokens(train_caption_tokens, word_dict, max_length)
     validation_captions = process_caption_tokens(validation_caption_tokens, word_dict, max_length)
     test_captions = process_caption_tokens(test_caption_tokens, word_dict, max_length)
@@ -70,6 +71,7 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
 def process_caption_tokens(caption_tokens, word_dict, max_length):
     captions = []
     for tokens in caption_tokens:
+        tokens = tokens[:max_length]
         token_idxs = [word_dict[token] if token in word_dict else word_dict['<unk>'] for token in tokens]
         captions.append([word_dict['<start>']] + token_idxs + [word_dict['<eos>']] + [word_dict['<pad>']] * (max_length - len(tokens)))
 
@@ -84,6 +86,8 @@ if __name__ == "__main__":
                         help='maximum number of captions per image')
     parser.add_argument('--min-word-count', type=int, default=5,
                         help='minimum number of occurences of a word to be included in word dictionary')
+    parser.add_argument('--max-caption-length', type=int, default=25,
+                        help='maximum number of tokens in a caption')
     args = parser.parse_args()
 
-    generate_json_data(args.split_path, args.data_path, args.max_captions, args.min_word_count)
+    generate_json_data(args.split_path, args.data_path, args.max_captions, args.min_word_count, args.max_caption_length)

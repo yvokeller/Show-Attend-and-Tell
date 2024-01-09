@@ -1,4 +1,5 @@
 from prettytable import PrettyTable
+import torch
 
 class AverageMeter(object):
     """Taken from https://github.com/pytorch/examples/blob/master/imagenet/main.py"""
@@ -97,24 +98,12 @@ def extract_and_print_correct_tokens(correct_any_k, targets, tokenizer=None):
             # Print in a single line
             print(f"Sample {i} - Correct Tokens: {correct_batch_tokens}, Full Sentence: {' '.join(target_sentence_tokens)}")
 
-def calculate_caption_lengths(captions, word_dict):
-    lengths = 0
-    for caption_tokens in captions:
-        for token in caption_tokens:
-            if token in (word_dict['<start>'], word_dict['<eos>'], word_dict['<pad>']):
-                continue
-            else:
-                lengths += 1
-    return lengths
+def calculate_caption_lengths(captions, skip_tokens):
+    # Create a mask for the tokens to be excluded
+    mask = ~captions.unsqueeze(-1).eq(skip_tokens).any(-1)
 
-def calculate_caption_lengths_bert(captions, tokenizer):
-    lengths = 0
-    for caption_tokens in captions:
-        for token in caption_tokens:
-            if token in (tokenizer.cls_token_id, tokenizer.sep_token_id, tokenizer.pad_token_id):
-                continue
-            else:
-                lengths += 1
+    # Sum over the mask to count the number of valid tokens
+    lengths = mask.sum().item()
     return lengths
 
 def count_parameters(model):

@@ -14,11 +14,12 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from torchvision import transforms
 from PIL import Image
 import skimage.transform
+from os import cpu_count
 
 from dataset import ImageCaptionDataset
 from decoder import Decoder
 from encoder import Encoder
-from utils import AverageMeter, count_parameters, sequence_accuracy, calculate_caption_lengths, calculate_caption_lengths_bert
+from utils import AverageMeter, calculate_caption_lengths, count_parameters, sequence_accuracy, calculate_caption_lengths
 
 import wandb
 
@@ -71,15 +72,15 @@ def main(args):
 
     train_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='train'),
-        batch_size=args.batch_size, shuffle=True, num_workers=1)
+        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
 
     val_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='val'),
-        batch_size=args.batch_size, shuffle=True, num_workers=1)
+        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
     
     test_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='test'),
-        batch_size=args.batch_size, shuffle=True, num_workers=1)
+        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
 
     print(f'Starting training with {args}')
     print("Encoder parameters:")
@@ -166,9 +167,9 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         #            print(f"Gradients for {name} were computed.")
 
         if bert == True:
-            total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
+            total_caption_length = calculate_caption_lengths(captions, torch.tensor([tokenizer.pad_token_id, tokenizer.cls_token_id, tokenizer.sep_token_id], device='mps'))
         else:
-            total_caption_length = calculate_caption_lengths(captions, word_dict)
+            total_caption_length = calculate_caption_lengths(captions, torch.tensor([word_dict['<pad>'], word_dict['<start>'], word_dict['<eos>']], device='mps'))
 
         losses.update(loss.item(), total_caption_length)
         top1.update(acc1, total_caption_length)
@@ -232,9 +233,9 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             # loss += rep_penalty
 
             if bert == True:
-                total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
+                total_caption_length = calculate_caption_lengths(captions, torch.tensor([tokenizer.pad_token_id, tokenizer.cls_token_id, tokenizer.sep_token_id], device='mps'))
             else:
-                total_caption_length = calculate_caption_lengths(captions, word_dict)
+                total_caption_length = calculate_caption_lengths(captions, torch.tensor([word_dict['<pad>'], word_dict['<start>'], word_dict['<eos>']], device='mps'))
                 
             losses.update(loss.item(), total_caption_length)
             top1.update(acc1, total_caption_length)
