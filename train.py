@@ -18,7 +18,7 @@ import skimage.transform
 from dataset import ImageCaptionDataset
 from decoder import Decoder
 from encoder import Encoder
-from utils import AverageMeter, sequence_accuracy, calculate_caption_lengths, calculate_caption_lengths_bert
+from utils import AverageMeter, count_parameters, sequence_accuracy, calculate_caption_lengths, calculate_caption_lengths_bert
 
 import wandb
 
@@ -112,6 +112,9 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
     encoder.eval()
     decoder.train()
 
+    count_parameters(encoder)
+    count_parameters(decoder)
+
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -137,6 +140,11 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
 
         # encourage total attention (alphas) to be close to 1, thus penalize when sum is far from 1
         att_regularization = alpha_c * ((1 - alphas.sum(1)) ** 2).mean()
+
+        # add repetition penalty to loss
+        # start_idx = word_dict['<start>'] if bert == False else tokenizer.cls_token_id
+        # rep_penalty = repetition_penalty(preds, [padding_idx, start_idx], beta=1.0)
+        # loss += rep_penalty
 
         loss = cross_entropy_loss(packed_preds, packed_targets)
         loss += att_regularization # pytorch autograd will calculate gradients for both loss and att_regularization
@@ -201,6 +209,11 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             loss = cross_entropy_loss(packed_preds, packed_targets)
             loss += att_regularization
 
+            # add repetition penalty to loss
+            # start_idx = word_dict['<start>'] if bert == False else tokenizer.cls_token_id
+            # rep_penalty = repetition_penalty(preds, [padding_idx, start_idx], beta=1.0)
+            # loss += rep_penalty
+
             if bert == True:
                 total_caption_length = calculate_caption_lengths_bert(captions, tokenizer)
             else:
@@ -222,7 +235,7 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
                             sentence.append(token)
 
                     return tokenizer.convert_tokens_to_string(sentence)
-                    # return tokenizer.decode(caption, skip_special_tokens=True).split()  # TODO: maybe should keep <END> token?
+                    # return tokenizer.decode(caption, skip_special_tokens=True).split()
                 
                 for caption in captions.tolist():
                     decoded_captions.append(bert_decode_caption(caption))
@@ -313,6 +326,35 @@ def validate(epoch, *args, **kwargs):
 def test(epoch, *args, **kwargs):
     print(f"Epoch {epoch} - Starting test")
     return run_evaluation(epoch, *args, mode=EvalMode.TEST, **kwargs)
+
+def repetition_penalty(preds, ignore_idxs, beta=1.0):
+    """
+    Calculates a penalty for repetitions in the predictions.
+
+    :param preds: Tensor of predicted token indices of shape [batch_size, seq_length, vocab_size].
+    :param ignore_idxs: List of token indices to ignore for penalty calculation (e.g., padding or start tokens).
+    :param beta: Weight for the repetition penalty.
+    :return: Repetition penalty term.
+    """
+    # Get the predicted tokens (not probabilities)
+    _, pred_tokens = preds.max(2)
+
+    # Shift pred_tokens by one step
+    shifted_pred_tokens = torch.cat((pred_tokens[:, :1], pred_tokens[:, :-1]), dim=1)
+
+    # Calculate repetition (1 for same tokens, 0 for different)
+    repetitions = (pred_tokens == shifted_pred_tokens).float()
+
+    # Apply mask to ignore the specified token indices
+    mask = torch.ones_like(repetitions).bool()
+    for idx in ignore_idxs:
+        mask &= (shifted_pred_tokens != idx)
+
+    masked_repetitions = repetitions[:, 1:] * mask[:, 1:].float()
+
+    # Sum the repetitions and average over batch size for penalty
+    penalty = (masked_repetitions.sum() / pred_tokens.size(0)) * beta
+    return penalty
 
 def log_attention_visualization_plot(img_tensor, alphas, decoded_hypotheses, decoded_captions, batch_idx, img_idx, global_caption_idx, encoder):
     # Move tensor to CPU and detach from the computation graph
