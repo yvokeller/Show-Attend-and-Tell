@@ -14,9 +14,9 @@ def main():
     # Define the arguments for each script call
     plain_att = [
         '--data', 'data/flickr8k',
-        '--epochs', '2',
-        '--frac', '0.02',
-        '--log-interval', '20',
+        '--epochs', '8',
+        '--frac', '1',
+        '--log-interval', '50',
         '--attention', 
         '--tf',
         '--ado',
@@ -25,9 +25,9 @@ def main():
    
     plain_noatt = [
         '--data', 'data/flickr8k',
-        '--epochs', '2',
-        '--frac', '0.02',
-        '--log-interval', '20',
+        '--epochs', '8',
+        '--frac', '1',
+        '--log-interval', '50',
         # '--attention', 
         '--tf',
         '--ado',
@@ -36,9 +36,9 @@ def main():
 
     bert_att = [
         '--data', 'data/flickr8k',
-        '--epochs', '2',
-        '--frac', '0.02',
-        '--log-interval', '20',
+        '--epochs', '8',
+        '--frac', '1',
+        '--log-interval', '50',
         '--attention', 
         '--tf',
         '--ado',
@@ -47,9 +47,9 @@ def main():
 
     bert_noatt = [
         '--data', 'data/flickr8k',
-        '--epochs', '2',
-        '--frac', '0.02',
-        '--log-interval', '20',
+        '--epochs', '8',
+        '--frac', '1',
+        '--log-interval', '50',
         # '--attention', 
         '--tf',
         '--ado',
