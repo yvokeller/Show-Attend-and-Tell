@@ -86,7 +86,6 @@ class Decoder(nn.Module):
             # current_embedding = self.embedding(captions) if self.training else self.embedding(prev_words) # TODO: I think this else case never happens
             caption_embedding = self.embedding(captions)
         else:
-            # case that we are in inference mode or not using teacher forcing
             previous_predicted_token_embedding = self.embedding(start_token)
 
         # Preparing to store predictions and attention weights
