@@ -35,6 +35,8 @@ Place the Flickr8k data split JSON file in `data/flickr8k/`. It should be named 
 
 Run `python generate_json_data.py --split-path='data/flickr8k/dataset.json' --data-path='data/flickr8k'` to generate the JSON files needed for training.
 
+If you want to use pre-trained BERT embeddings (`bert=True`), additionally run `python generate_json_data_bert.py --split-path='data/flickr8k/dataset.json' --data-path='data/flickr8k'` to generate the BERT-tokenized caption JSON files.
+
 ### COCO
 
 Download the COCO dataset training and validation images. Put them in `data/coco/imgs/train2014` and `data/coco/imgs/val2014` respectively.
@@ -50,11 +52,19 @@ Start the training by running:
 python train.py --data=data/flickr8k
 ```
 
+or to make a small test run:
+
+```bash
+python train.py --data=data/flickr8k --tf --ado --attention --epochs=1 --frac=0.02 --log-interval=2
+```
+
 The models will be saved in `model/` and the training statistics are uploaded to your W&B account.
 
 My training statistics are available here: [W&B](https://wandb.ai/yvokeller/show-attend-and-tell)
 
 ## To Generate Captions
+
+Note that together with the model parameters, a model_config.json is saved. This is required by `generate_caption.py` to properly load the model.
 
 ```bash
 python generate_caption.py --img-path <PATH_TO_IMG> --model <PATH_TO_MODEL_PARAMETERS>
@@ -63,13 +73,14 @@ python generate_caption.py --img-path <PATH_TO_IMG> --model <PATH_TO_MODEL_PARAM
 An example:
 
 ```bash
-python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --model model/model_vgg19_5.pth --data data/flickr8k  
+python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --model model/model_vgg19_5.pth
 ```
 
-Working images:
+You also have the option to generate captions based on models saved on W&B:
 
-- data/flickr8k/imgs/667626_18933d713e.jpg
-- data/flickr8k/imgs/3718892835_a3e74a3417.jpg
+```bash
+python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg --wandb-run yvokeller/show-attend-and-tell/0v6sxo6t --wandb-model model/model_vgg19_1.pth
+``````
 
 ## Captioned Examples
 
@@ -93,4 +104,4 @@ Working images:
 
 [Neural Machine Translation By Jointly Learning to Align And Translate](https://arxiv.org/pdf/1409.0473.pdf)
 
-[Karpathy's Data splits](https://cs.stanford.edu/people/karpathy/deepimagesent/)
+[Karpathys Data splits](https://cs.stanford.edu/people/karpathy/deepimagesent/)

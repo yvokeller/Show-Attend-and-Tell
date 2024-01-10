@@ -2,7 +2,7 @@ import argparse, json
 from collections import Counter
 
 
-def generate_json_data(split_path, data_path, max_captions_per_image, min_word_count):
+def generate_json_data(split_path, data_path, max_captions_per_image, min_word_count, max_caption_length):
     split = json.load(open(split_path, 'r'))
     word_count = Counter()
 
@@ -10,6 +10,8 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
     train_caption_tokens = []
     validation_img_paths = []
     validation_caption_tokens = []
+    test_img_paths = []
+    test_caption_tokens = []
 
     max_length = 0
     for img in split['images']:
@@ -32,6 +34,9 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
             elif img['split'] == 'val':
                 validation_img_paths.append(img_path)
                 validation_caption_tokens.append(sentence['tokens'])
+            elif img['split'] == 'test':
+                test_img_paths.append(img_path)
+                test_caption_tokens.append(sentence['tokens'])
             max_length = max(max_length, len(sentence['tokens']))
             word_count.update(sentence['tokens'])
 
@@ -45,8 +50,10 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
     with open(data_path + '/word_dict.json', 'w') as f:
         json.dump(word_dict, f)
 
+    max_length = min(max_length, max_caption_length)
     train_captions = process_caption_tokens(train_caption_tokens, word_dict, max_length)
     validation_captions = process_caption_tokens(validation_caption_tokens, word_dict, max_length)
+    test_captions = process_caption_tokens(test_caption_tokens, word_dict, max_length)
 
     with open(data_path + '/train_img_paths.json', 'w') as f:
         json.dump(train_img_paths, f)
@@ -56,15 +63,17 @@ def generate_json_data(split_path, data_path, max_captions_per_image, min_word_c
         json.dump(train_captions, f)
     with open(data_path + '/val_captions.json', 'w') as f:
         json.dump(validation_captions, f)
-
+    with open(data_path + '/test_img_paths.json', 'w') as f:
+        json.dump(test_img_paths, f)
+    with open(data_path + '/test_captions.json', 'w') as f:
+        json.dump(test_captions, f)
 
 def process_caption_tokens(caption_tokens, word_dict, max_length):
     captions = []
     for tokens in caption_tokens:
+        tokens = tokens[:max_length]
         token_idxs = [word_dict[token] if token in word_dict else word_dict['<unk>'] for token in tokens]
-        captions.append(
-            [word_dict['<start>']] + token_idxs + [word_dict['<eos>']] +
-            [word_dict['<pad>']] * (max_length - len(tokens)))
+        captions.append([word_dict['<start>']] + token_idxs + [word_dict['<eos>']] + [word_dict['<pad>']] * (max_length - len(tokens)))
 
     return captions
 
@@ -77,6 +86,8 @@ if __name__ == "__main__":
                         help='maximum number of captions per image')
     parser.add_argument('--min-word-count', type=int, default=5,
                         help='minimum number of occurences of a word to be included in word dictionary')
+    parser.add_argument('--max-caption-length', type=int, default=25,
+                        help='maximum number of tokens in a caption')
     args = parser.parse_args()
 
-    generate_json_data(args.split_path, args.data_path, args.max_captions, args.min_word_count)
+    generate_json_data(args.split_path, args.data_path, args.max_captions, args.min_word_count, args.max_caption_length)
