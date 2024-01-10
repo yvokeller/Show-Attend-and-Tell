@@ -44,7 +44,7 @@ def generate_json_data(split_path, data_path, max_captions_per_image, max_captio
             padded_caption = encoded_caption + [tokenizer.pad_token_id] * (max_length - len(encoded_caption))
             
             # Add special tokens
-            padded_caption = [tokenizer.cls_token_id] + padded_caption + [tokenizer.sep_token_id]
+            padded_caption = [tokenizer.cls_token_id] + padded_caption + [tokenizer.sep_token_id] # TODO: fix, SEP must be before padding
 
             if img['split'] == 'train':
                 train_captions.append(padded_caption)
