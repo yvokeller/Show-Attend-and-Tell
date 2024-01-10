@@ -67,7 +67,11 @@ def load_model(model_path=None, model_config_path=None, wandb_run=None, wandb_mo
 
     encoder = Encoder(network=network)
     decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert, attention=attention)
-    decoder.load_state_dict(torch.load(model_path))
+    try:
+        decoder.load_state_dict(torch.load(model_path))
+    except RuntimeError:
+        print(f'Strict loading failed, loading with strict=False')
+        decoder.load_state_dict(torch.load(model_path), strict=False)
 
     encoder.eval()
     decoder.eval()
@@ -119,7 +123,7 @@ def generate_caption_visualization(img_path, encoder, decoder, model_config_path
     num_words = len(sentence_tokens)
     w = np.round(np.sqrt(num_words))
     h = np.ceil(np.float32(num_words) / w)
-    alpha = torch.tensor(alpha)
+    alpha = alpha.clone().detach()
 
     if figsize:
         plt.figure(figsize=figsize)

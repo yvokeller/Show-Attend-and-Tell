@@ -63,6 +63,7 @@ def main(args):
     decoder = Decoder(vocabulary_size, encoder.dim, tf=args.tf, ado=args.ado, bert=args.bert, attention=args.attention)
 
     if args.model:
+        print(f"Fine-tuning from base model {args.model}")
         decoder.load_state_dict(torch.load(args.model))
 
     encoder.to(mps_device)

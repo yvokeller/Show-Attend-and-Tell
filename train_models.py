@@ -96,7 +96,7 @@ def main():
 
     plain_exp_lr2_bert = [
         '--data', 'data/flickr8k',
-        '--epochs', '12',
+        '--epochs', '16',
         '--frac', '1',
         '--log-interval', '50',
         '--attention', 
@@ -109,7 +109,7 @@ def main():
 
     plain_exp_lr2_longer = [
         '--data', 'data/flickr8k',
-        '--epochs', '20',
+        '--epochs', '12',
         '--frac', '1',
         '--log-interval', '50',
         '--attention', 
@@ -117,7 +117,21 @@ def main():
         '--ado',
         '--batch-size', '64',
         '--lr', '0.001',
+        '--model', 'model/cache_wandb/tuzy19bt/model/model_vgg19_8.pth'
         # '--bert'
+    ]
+
+    plain_noatt_attention_layers_removed = [
+        '--data', 'data/flickr8k',
+        '--epochs', '8',
+        '--frac', '1',
+        '--log-interval', '50',
+        # '--attention', 
+        '--tf',
+        '--ado',
+        '--batch-size', '64',
+        '--lr', '0.0001',
+        # '--bert'
     ]
 
     # Calling the train.py script with the specified arguments
@@ -136,10 +150,14 @@ def main():
     # print("Running plain_exp_lr2")
     # run_script('train.py', plain_exp_lr2)
     # TODO from here
-    # print("Running plain_exp_lr2_bert")
-    # run_script('train.py', plain_exp_lr2_bert)
-    print("Running plain_exp_lr2_longer")
-    run_script('train.py', plain_exp_lr2_longer)
+    # print("Running plain_exp_lr2_longer")
+    # run_script('train.py', plain_exp_lr2_longer)
+
+    # print("Running plain_noatt_attention_layers_removed")
+    # run_script('train.py', plain_noatt_attention_layers_removed)
+
+    print("Running plain_exp_lr2_bert")
+    run_script('train.py', plain_exp_lr2_bert)
 
 if __name__ == "__main__":
     main()
