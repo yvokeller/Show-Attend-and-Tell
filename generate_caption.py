@@ -49,6 +49,8 @@ def load_model(model_path=None, model_config_path=None, wandb_run=None, wandb_mo
         from transformers import BertTokenizer, BertModel 
         bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         bert_model = BertModel.from_pretrained('bert-base-uncased')
+        bert_tokenizer.bos_token = bert_tokenizer.cls_token
+        bert_tokenizer.eos_token = bert_tokenizer.sep_token
         vocabulary_size = bert_model.config.vocab_size
         global_tokenizer['tokenizer'] = bert_tokenizer
         global_tokenizer['bert'] = True
@@ -116,7 +118,7 @@ def generate_caption_visualization(img_path, encoder, decoder, model_config_path
     num_words = len(sentence_tokens)
     w = np.round(np.sqrt(num_words))
     h = np.ceil(np.float32(num_words) / w)
-    alpha = alpha.clone().detach()
+    alpha = torch.tensor(alpha)
 
     if figsize:
         plt.figure(figsize=figsize)

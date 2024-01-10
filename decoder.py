@@ -204,19 +204,31 @@ class Decoder(nn.Module):
             output = top_preds.expand_as(output) + output
 
             if step == 1:
-                top_preds, top_words = output[0].topk(beam_size, 0, True, True)
+                top_preds, top_words = output[0].topk(beam_size, 0, True, True) # beamsize, dim, largest, sorted
             else:
                 top_preds, top_words = output.view(-1).topk(beam_size, 0, True, True)
-            prev_word_idxs = top_words / output.size(1)
-            next_word_idxs = top_words % output.size(1)
+            prev_word_idxs = top_words // output.size(1) # calculates the indices of the previous words in the sequences
+            next_word_idxs = top_words % output.size(1) # calculates the indices of the next words to add to each sequence.
 
             prev_word_idxs = prev_word_idxs.long()
             next_word_idxs = next_word_idxs.long()
 
+            # DEBUGGING: print next_word_idxs with their likelihood
+            # for i, next_word_idx in enumerate(next_word_idxs):
+            #    print(f'Next word {i}: {self.tokenizer.decode(next_word_idx)} with likelihood {top_preds[i].item()}')
+
             sentences = torch.cat((sentences[prev_word_idxs], next_word_idxs.unsqueeze(1)), dim=1)
             alphas = torch.cat((alphas[prev_word_idxs], alpha[prev_word_idxs].unsqueeze(1)), dim=1)
 
-            incomplete = [idx for idx, next_word in enumerate(next_word_idxs) if next_word != 1 and next_word != 102] # 1: <eos>, 102: [SEP]
+            # creates a list containing the indices of all sequences that are not yet complete
+            if self.use_bert:
+                # Quickfix for training BERT with SEP token at the end of sequence, PAD inbetween...
+                incomplete = [idx for idx, next_word in enumerate(next_word_idxs) if next_word != 1 and next_word != 0]
+            else:
+                # TODO: normal behaviour, revert to this later
+                incomplete = [idx for idx, next_word in enumerate(next_word_idxs) if next_word != 1 and next_word != 102] # 1: <eos>, 102: [SEP]
+            
+            # contains indices of sequences that have reached a conclusion
             complete = list(set(range(len(next_word_idxs))) - set(incomplete))
 
             if len(complete) > 0:
@@ -227,13 +239,15 @@ class Decoder(nn.Module):
 
             if beam_size == 0:
                 break
+
+            # update tensor information to keep the information for the incomplete sequences
             sentences = sentences[incomplete]
             alphas = alphas[incomplete]
             h = h[prev_word_idxs[incomplete]]
             c = c[prev_word_idxs[incomplete]]
             img_features = img_features[prev_word_idxs[incomplete]]
-            top_preds = top_preds[incomplete].unsqueeze(1)
-            prev_words = next_word_idxs[incomplete].unsqueeze(1)
+            top_preds = top_preds[incomplete].unsqueeze(1) # extract the top predictions for the incomplete sequences
+            prev_words = next_word_idxs[incomplete].unsqueeze(1) # next_words of incomplete sequences become the prev_words for the next iteration
 
             if step > 50:
                 break
@@ -244,9 +258,9 @@ class Decoder(nn.Module):
             return [0], alpha
 
         # Print all completed sentences if BERT is used
-        if self.use_bert:
-            for i, sentence in enumerate(completed_sentences):
-                print(f'Sentence {i}: {self.tokenizer.decode(sentence, skip_special_tokens=True)}')
+        # if self.use_bert:
+        #    for i, sentence in enumerate(completed_sentences):
+        #        print(f'Sentence {i}: {self.tokenizer.decode(sentence, skip_special_tokens=True)}')
 
         idx = completed_sentences_preds.index(max(completed_sentences_preds))
         sentence = completed_sentences[idx]
