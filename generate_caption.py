@@ -25,8 +25,62 @@ from train import data_transforms
 if torch.backends.mps.is_available():
     mps_device = torch.device("mps")
 
+# Global variable for tokenizer
+global_tokenizer = {'tokenizer': None, 'bert': False}
 
-def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_size=3, smooth=True, bert=False, tokenizer=None):
+def load_model(model_path=None, model_config_path=None, wandb_run=None, wandb_model=None):
+    # Check if model is to be loaded from wandb
+    if wandb_run is not None and wandb_model is not None:
+        wandb_run_id = wandb_run.split('/')[2]
+        wandb_model_config_name = wandb_model.split('/')[0] + '/model_config.json'
+        model_target_dir = f'model/cache_wandb/{wandb_run_id}/'
+        wandb_loaded_model = wandb.restore(name=wandb_model, run_path=wandb_run, root=model_target_dir)
+        wandb_loaded_model_config = wandb.restore(name=wandb_model_config_name, run_path=wandb_run, root=model_target_dir)
+
+        model_path = wandb_loaded_model.name
+        model_config_path = wandb_loaded_model_config.name
+    elif model_path is None or model_config_path is None:
+        raise ValueError("Model path and config path must be provided if not loading from wandb")
+    
+    # Load model config
+    with open(model_config_path, 'r') as f:
+        model_config = json.load(f)
+
+    network = model_config['network']
+    data_path = model_config['data']
+    ado = model_config['ado']
+    bert = model_config['bert']
+    attention = model_config['attention']
+
+    if bert:
+        from transformers import BertTokenizer, BertModel 
+        bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        bert_model = BertModel.from_pretrained('bert-base-uncased')
+        vocabulary_size = bert_model.config.vocab_size
+        global_tokenizer['tokenizer'] = bert_tokenizer
+        global_tokenizer['bert'] = True
+    else:
+        word_dict = json.load(open(data_path + '/word_dict.json', 'r'))
+        vocabulary_size = len(word_dict)
+        global_tokenizer['tokenizer'] = word_dict
+        global_tokenizer['bert'] = False
+
+    encoder = Encoder(network=network)
+    decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert, attention=attention)
+    decoder.load_state_dict(torch.load(model_path))
+
+    encoder.eval()
+    decoder.eval()
+
+    return encoder, decoder, bert, model_path, model_config_path
+
+def generate_caption_visualization(img_path, encoder, decoder, model_config_path, model_path, beam_size=3, smooth=True, reload_tokenizer=False, figsize=None):
+    if reload_tokenizer or global_tokenizer['tokenizer'] is None:
+        encoder, decoder, bert = load_model(model_config_path, model_path)
+
+    tokenizer = global_tokenizer['tokenizer']
+    bert = global_tokenizer['bert']
+
     img = pil_loader(img_path)
     img = data_transforms(img)
     img = torch.FloatTensor(img)
@@ -41,11 +95,11 @@ def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_s
         sentence_tokens = tokenizer.decode(sentence, skip_special_tokens=False).split()
     else:
         # Decoding with custom word dictionary
-        token_dict = {idx: word for word, idx in word_dict.items()}
+        token_dict = {idx: word for word, idx in tokenizer.items()}
         sentence_tokens = []
         for word_idx in sentence:
             sentence_tokens.append(token_dict[word_idx])
-            if word_idx == word_dict['<eos>']:
+            if word_idx == tokenizer['<eos>']:
                 break
 
     img = Image.open(img_path)
@@ -66,6 +120,9 @@ def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_s
     w = np.round(np.sqrt(num_words))
     h = np.ceil(np.float32(num_words) / w)
     alpha = torch.tensor(alpha)
+
+    if figsize:
+        plt.figure(figsize=figsize)
 
     plot_height = ceil((num_words + 3) / 4.0)
     ax1 = plt.subplot(4, plot_height, 1)
@@ -94,56 +151,19 @@ def generate_caption_visualization(encoder, decoder, img_path, word_dict, beam_s
         plt.axis('off')
     plt.show()
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='Show, Attend and Tell Caption Generator')
     parser.add_argument('--img-path', type=str, help='path to image')
     parser.add_argument('--model', type=str, help='path to model parameters')
     parser.add_argument('--wandb-run', type=str, help='wandb run path', default=None)
     parser.add_argument('--wandb-model', type=str, help='wandb model path', default=None)
     args = parser.parse_args()
-    
-    # Load model from wandb
-    if args.wandb_run is not None and args.wandb_model is not None:
-        wandb_run_id = args.wandb_run.split('/')[2]
-        wandb_model_config_name = args.wandb_model.split('/')[0] + '/model_config.json'
-        model_target_dir = f'model/cache_wandb/{wandb_run_id}/'
-        wandb_loaded_model = wandb.restore(name=args.wandb_model, run_path=args.wandb_run, root=model_target_dir)
-        wandb_loaded_model_config = wandb.restore(name=wandb_model_config_name, run_path=args.wandb_run, root=model_target_dir)
 
-        model_path = wandb_loaded_model.name
-        model_config_path = wandb_loaded_model_config.name
-    else:
-        model_path = args.model
-        model_config_path = os.path.join(os.path.dirname(model_path), 'model_config.json')
+    # Load the encoder and decoder models
+    encoder, decoder, bert, model_path, model_config_path = load_model(args.model, None, args.wandb_run, args.wandb_model)
 
-    # Load model config
-    with open(model_config_path, 'r') as f:
-        model_config = json.load(f)
+    # Generate caption visualization
+    generate_caption_visualization(args.img_path, encoder, decoder, model_config_path, model_path)
 
-    network = model_config['network']
-    data_path = model_config['data']
-    ado = model_config['ado']
-    bert = model_config['bert']
-    attention = model_config['attention']
-
-    if bert == True:
-        from transformers import BertTokenizer, BertModel 
-        bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        bert_model = BertModel.from_pretrained('bert-base-uncased')
-        vocabulary_size = bert_model.config.vocab_size
-    else:
-        word_dict = json.load(open(data_path + '/word_dict.json', 'r'))
-        vocabulary_size = len(word_dict)
-
-    encoder = Encoder(network=network)
-    decoder = Decoder(vocabulary_size, encoder.dim, ado=ado, bert=bert, attention=attention)
-    decoder.load_state_dict(torch.load(model_path))
-
-    encoder.eval()
-    decoder.eval()
-
-    if bert == True:
-        generate_caption_visualization(encoder, decoder, args.img_path, None, bert=bert, tokenizer=bert_tokenizer)
-    else:
-        generate_caption_visualization(encoder, decoder, args.img_path, word_dict)
+if __name__ == "__main__":
+    main()

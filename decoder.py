@@ -242,6 +242,7 @@ class Decoder(nn.Module):
 
         if len(completed_sentences_preds) == 0:
             print('No completed sentences found')
+            return [0], alpha
 
         # Print all completed sentences if BERT is used
         if self.use_bert:
