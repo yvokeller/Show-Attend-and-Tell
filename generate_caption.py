@@ -1,11 +1,4 @@
-"""
-We use the same strategy as the author to display visualizations
-as in the examples shown in the paper. The strategy used is adapted for
-PyTorch from here:
-https://github.com/kelvinxu/arctic-captions/blob/master/alpha_visualization.ipynb
-"""
-
-import argparse, json, os
+import argparse, json
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
