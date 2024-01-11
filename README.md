@@ -13,14 +13,7 @@ For a trained model to load into the decoder, use
 
 ### Some training statistics
 
-BLEU scores for VGG19 (Orange) and ResNet152 (Red) Trained With Teacher Forcing.
-
-| BLEU Score | Graph                        | Top-K Accuracy   | Graph                              |
-|------------|------------------------------|------------------|------------------------------------|
-| BLEU-1     | ![BLEU-1](/assets/bleu1.png) | Training Top-1   | ![Train TOP-1](/assets/top1.png)   |
-| BLEU-2     | ![BLEU-2](/assets/bleu2.png) | Training Top-5   | ![Train TOP-5](/assets/top5.png)   |
-| BLEU-3     | ![BLEU-3](/assets/bleu3.png) | Validation Top-1 | ![Val TOP-1](/assets/val_top1.png) |
-| BLEU-4     | ![BLEU-4](/assets/bleu4.png) | Validation Top-5 | ![Val TOP-5](/assets/val_top5.png) |
+TODO
 
 ## Setup before training
 
@@ -86,15 +79,11 @@ python generate_caption.py --img-path data/flickr8k/imgs/667626_18933d713e.jpg -
 
 ### Correctly Captioned Images
 
-![Correctly Captioned Image 1](/assets/tennis.png)
-
-![Correctly Captioned Image 2](/assets/right_cap.png)
+TODO
 
 ### Incorrectly Captioned Images
 
-![Incorrectly Captioned Image 1](/assets/bad_cap.png)
-
-![Incorrectly Captioned Image 2](/assets/wrong_cap.png)
+TODO
 
 ## References
 
