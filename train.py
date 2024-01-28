@@ -78,17 +78,17 @@ def main(args):
     start_time = time.time()
     train_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='train'),
-        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
+        batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
     end_time = time.time()
     print(f"Time to load train dataset: {end_time - start_time} seconds")
 
     val_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='val'),
-        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
+        batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
     
     test_loader = DataLoader(
         ImageCaptionDataset(data_transforms, args.data, fraction=args.fraction, bert=args.bert, split_type='test'),
-        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=True)
+        batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
 
     print(f'Starting training with {args}')
     print("Encoder parameters:")
@@ -175,9 +175,9 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
         #            print(f"Gradients for {name} were computed.")
 
         if bert == True:
-            total_caption_length = calculate_caption_lengths(captions, torch.tensor([tokenizer.pad_token_id, tokenizer.cls_token_id, tokenizer.sep_token_id], device='mps'))
+            total_caption_length = calculate_caption_lengths(captions, torch.tensor([tokenizer.pad_token_id, tokenizer.cls_token_id, tokenizer.sep_token_id], device=device))
         else:
-            total_caption_length = calculate_caption_lengths(captions, torch.tensor([word_dict['<pad>'], word_dict['<start>'], word_dict['<eos>']], device='mps'))
+            total_caption_length = calculate_caption_lengths(captions, torch.tensor([word_dict['<pad>'], word_dict['<start>'], word_dict['<eos>']], device=device))
 
         losses.update(loss.item(), total_caption_length)
         top1.update(acc1, total_caption_length)
@@ -241,9 +241,9 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
             # loss += rep_penalty
 
             if bert == True:
-                total_caption_length = calculate_caption_lengths(captions, torch.tensor([tokenizer.pad_token_id, tokenizer.cls_token_id, tokenizer.sep_token_id], device='mps'))
+                total_caption_length = calculate_caption_lengths(captions, torch.tensor([tokenizer.pad_token_id, tokenizer.cls_token_id, tokenizer.sep_token_id], device=device))
             else:
-                total_caption_length = calculate_caption_lengths(captions, torch.tensor([word_dict['<pad>'], word_dict['<start>'], word_dict['<eos>']], device='mps'))
+                total_caption_length = calculate_caption_lengths(captions, torch.tensor([word_dict['<pad>'], word_dict['<start>'], word_dict['<eos>']], device=device))
                 
             losses.update(loss.item(), total_caption_length)
             top1.update(acc1, total_caption_length)
@@ -458,6 +458,8 @@ if __name__ == "__main__":
                         help='number of batches to wait before logging training stats (default: 100)')
     parser.add_argument('--data', type=str, default='data/coco',
                         help='path to data images (default: data/coco)')
+    parser.add_argument('--num-workers', type=int, default=0,
+                        help='number of workers to use for data loading (default: 0)')
     parser.add_argument('--network', choices=['vgg19', 'resnet152', 'densenet161'], default='vgg19',
                         help='network to use in the encoder (default: vgg19)')
     parser.add_argument('--model', type=str, help='path to model')
