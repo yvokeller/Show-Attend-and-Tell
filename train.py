@@ -38,7 +38,8 @@ elif torch.backends.mps.is_available():
 
 def set_seed(seed):
     torch.manual_seed(seed)
-    torch.mps.manual_seed(seed) # for GPU
+    torch.cuda.manual_seed(seed)
+    torch.mps.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True  # for convolution operations
