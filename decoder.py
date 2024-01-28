@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 from attention import Attention
 
-if torch.backends.mps.is_available():
-    mps_device = torch.device("mps")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
 
 
 class Decoder(nn.Module):
@@ -77,9 +79,9 @@ class Decoder(nn.Module):
         max_timespan = max([len(caption) for caption in captions]) - 1
 
         if self.use_bert:
-            start_token = torch.full((batch_size, 1), self.tokenizer.cls_token_id).long().to(mps_device)
+            start_token = torch.full((batch_size, 1), self.tokenizer.cls_token_id).long().to(device)
         else:
-            start_token = torch.zeros(batch_size, 1).long().to(mps_device)
+            start_token = torch.zeros(batch_size, 1).long().to(device)
         
         # Convert caption tokens to their embeddings
         if self.use_tf:
@@ -89,8 +91,8 @@ class Decoder(nn.Module):
             previous_predicted_token_embedding = self.embedding(start_token)
 
         # Preparing to store predictions and attention weights
-        preds = torch.zeros(batch_size, max_timespan, self.vocabulary_size).to(mps_device) # [BATCH_SIZE, TIME_STEPS, VOC_SIZE] = one-hot encoded prediction of token for each time step
-        alphas = torch.zeros(batch_size, max_timespan, img_features.size(1)).to(mps_device) # [BATCH_SIZE, TIME_STEPS, NUM_SPATIAL_FEATURES] = attention weight of each feature map for each time step
+        preds = torch.zeros(batch_size, max_timespan, self.vocabulary_size).to(device) # [BATCH_SIZE, TIME_STEPS, VOC_SIZE] = one-hot encoded prediction of token for each time step
+        alphas = torch.zeros(batch_size, max_timespan, img_features.size(1)).to(device) # [BATCH_SIZE, TIME_STEPS, NUM_SPATIAL_FEATURES] = attention weight of each feature map for each time step
 
         # Generating captions
         for t in range(max_timespan):
@@ -100,7 +102,7 @@ class Decoder(nn.Module):
                 gated_context = gate * context  # Apply gate to context
             else:
                 # If not using attention, treat all parts of the image equally
-                alpha = torch.full((batch_size, img_features.size(1)), 1.0 / img_features.size(1), device=mps_device)  # Uniform attention
+                alpha = torch.full((batch_size, img_features.size(1)), 1.0 / img_features.size(1), device=device)  # Uniform attention
                 context = img_features.mean(dim=1)  # Simply take the mean of the image features
                 gated_context = context  # No gating applied
 

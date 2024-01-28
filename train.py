@@ -31,8 +31,10 @@ data_transforms = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-if torch.backends.mps.is_available():
-    mps_device = torch.device("mps")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -66,11 +68,11 @@ def main(args):
         print(f"Fine-tuning from base model {args.model}")
         decoder.load_state_dict(torch.load(args.model))
 
-    encoder.to(mps_device)
-    decoder.to(mps_device)
+    encoder.to(device)
+    decoder.to(device)
     optimizer = optim.Adam(decoder.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, args.step_size)
-    cross_entropy_loss = nn.CrossEntropyLoss().to(mps_device)
+    cross_entropy_loss = nn.CrossEntropyLoss().to(device)
 
     start_time = time.time()
     train_loader = DataLoader(
@@ -127,7 +129,7 @@ def train(epoch, encoder, decoder, optimizer, cross_entropy_loss, data_loader, w
     top5 = AverageMeter()
     for batch_idx, (imgs, captions, _) in enumerate(data_loader):
         # TODO: Lots of shared code with run_evaluation(), refactor?
-        imgs, captions = Variable(imgs).to(mps_device), Variable(captions).to(mps_device)
+        imgs, captions = Variable(imgs).to(device), Variable(captions).to(device)
 
         img_features = encoder(imgs)
         optimizer.zero_grad()
@@ -212,7 +214,7 @@ def run_evaluation(epoch, encoder, decoder, cross_entropy_loss, data_loader, wor
     with torch.no_grad():
         logged_attention_visualizations_count = 0
         for batch_idx, (imgs, captions, all_captions) in enumerate(data_loader):
-            imgs, captions = Variable(imgs).to(mps_device), Variable(captions).to(mps_device)
+            imgs, captions = Variable(imgs).to(device), Variable(captions).to(device)
             img_features = encoder(imgs)
             preds, alphas = decoder(img_features, captions)
             targets = captions[:, 1:]
