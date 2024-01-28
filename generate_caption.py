@@ -15,8 +15,10 @@ from decoder import Decoder
 from encoder import Encoder
 from train import data_transforms
 
-if torch.backends.mps.is_available():
-    mps_device = torch.device("mps")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
 
 # Global variable for tokenizer
 global_tokenizer = {'tokenizer': None, 'bert': False}
